@@ -23,10 +23,6 @@ export function toDateTimeInputValue(value: string | null | undefined): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-export function fromDateTimeInputValue(value: string): string {
-  return new Date(value).toISOString();
-}
-
 export function formatStatus(status: PermitStatus): string {
   return status
     .toLowerCase()

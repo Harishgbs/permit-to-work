@@ -7,7 +7,14 @@ import EmptyState from '../../components/ui/EmptyState';
 import Field from '../../components/ui/Field';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { api } from '../../lib/api';
-import { formatType, fromDateTimeInputValue, toDateTimeInputValue } from '../../lib/format';
+import { formatType, toDateTimeInputValue } from '../../lib/format';
+import {
+  buildPermitPayload,
+  normalizePermitFormValues,
+  requiredText,
+  toIsoDateTime,
+  type PermitFormValues,
+} from '../../lib/permitPayload';
 import type {
   ConfinedSpaceData,
   ElectricalLotoData,
@@ -216,13 +223,6 @@ function requiredNumber(value: string, label: string): number {
   return parsed;
 }
 
-function requiredDateTime(value: string, label: string): string {
-  if (!value) throw new Error(`${label} is required.`);
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error(`${label} is invalid.`);
-  return date.toISOString();
-}
-
 export default function PermitForm({
   initial,
   onSubmit,
@@ -239,7 +239,7 @@ export default function PermitForm({
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState<PermitType>(initial?.type ?? 'HOT_WORK');
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<PermitFormValues>({
     contractorTeam: initial?.contractorTeam ?? '',
     workDescription: initial?.workDescription ?? '',
     plantId: initial?.plantId ?? '',
@@ -266,21 +266,9 @@ export default function PermitForm({
   };
 
   const validateStepOne = () => {
-    const required: Array<[string, string]> = [
-      ['contractorTeam', 'Contractor team'],
-      ['workDescription', 'Work description'],
-      ['plantId', 'Plant ID'],
-      ['areaId', 'Area ID'],
-      ['workLocation', 'Work location'],
-      ['plannedStartAt', 'Planned start'],
-      ['plannedEndAt', 'Planned end'],
-    ];
+    const values = normalizePermitFormValues(form);
 
-    for (const [key, label] of required) {
-      if (!form[key as keyof typeof form]) throw new Error(`${label} is required.`);
-    }
-
-    if (new Date(form.plannedEndAt) <= new Date(form.plannedStartAt)) {
+    if (new Date(values.plannedEndAt) <= new Date(values.plannedStartAt)) {
       throw new Error('Planned end must be after planned start.');
     }
   };
@@ -290,7 +278,7 @@ export default function PermitForm({
       return {
         hotWorkType: typeData.hotWorkType,
         fireWatch: typeData.fireWatch,
-        extinguisherType: typeData.extinguisherType,
+        extinguisherType: requiredText(typeData.extinguisherType, 'Fire extinguisher type'),
         combustiblesClearanceRadiusMetres: requiredNumber(
           typeData.combustiblesRadius,
           'Combustibles clearance radius',
@@ -298,68 +286,60 @@ export default function PermitForm({
         gasReadings: {
           lel: requiredNumber(typeData.gasLel, 'Gas LEL'),
           o2: requiredNumber(typeData.gasO2, 'Gas O2'),
-          recordedAt: requiredDateTime(typeData.gasRecordedAt, 'Gas reading time'),
+          recordedAt: toIsoDateTime(typeData.gasRecordedAt, 'Gas reading time'),
         },
       };
     }
 
     if (type === 'CONFINED_SPACE') {
       return {
-        spaceId: typeData.spaceId,
-        entryPoint: typeData.entryPoint,
+        spaceId: requiredText(typeData.spaceId, 'Space ID'),
+        entryPoint: requiredText(typeData.entryPoint, 'Entry point'),
         atmosphericReadings: {
           o2: requiredNumber(typeData.atmO2, 'Atmospheric O2'),
           lel: requiredNumber(typeData.atmLel, 'Atmospheric LEL'),
           h2s: requiredNumber(typeData.atmH2s, 'Atmospheric H2S'),
           co: requiredNumber(typeData.atmCo, 'Atmospheric CO'),
-          recordedAt: requiredDateTime(typeData.atmRecordedAt, 'Atmospheric reading time'),
+          recordedAt: toIsoDateTime(typeData.atmRecordedAt, 'Atmospheric reading time'),
         },
-        attendant: typeData.attendant,
-        rescuePlan: typeData.rescuePlan,
-        ventilation: typeData.ventilation,
-        entryExitLog: typeData.entryExitLog,
+        attendant: requiredText(typeData.attendant, 'Attendant'),
+        rescuePlan: requiredText(typeData.rescuePlan, 'Rescue plan'),
+        ventilation: requiredText(typeData.ventilation, 'Ventilation'),
+        entryExitLog: requiredText(typeData.entryExitLog, 'Entry/exit log'),
       };
     }
 
     if (type === 'WORKING_AT_HEIGHT') {
       return {
         heightMetres: requiredNumber(typeData.heightMetres, 'Height'),
-        accessMethod: typeData.accessMethod,
+        accessMethod: requiredText(typeData.accessMethod, 'Access method'),
         fallArrest: typeData.fallArrest,
-        anchorCheck: typeData.anchorCheck,
+        anchorCheck: requiredText(typeData.anchorCheck, 'Anchor check'),
         barricading: typeData.barricading,
       };
     }
 
+    const lockTagNumbers = typeData.lockTagNumbers
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (!lockTagNumbers.length) {
+      throw new Error('At least one lock/tag number is required.');
+    }
+
     return {
-      equipmentTag: typeData.equipmentTag,
+      equipmentTag: requiredText(typeData.equipmentTag, 'Equipment tag'),
       voltage: requiredNumber(typeData.voltage, 'Voltage'),
       isolationPoints: requiredNumber(typeData.isolationPoints, 'Isolation points'),
-      lockTagNumbers: typeData.lockTagNumbers
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
+      lockTagNumbers,
       earthing: typeData.earthing,
       testedDead: true,
-      testedDeadBy: typeData.testedDeadBy,
+      testedDeadBy: requiredText(typeData.testedDeadBy, 'Tested dead by'),
     };
   };
 
-  const buildPayload = (): PermitPayload => ({
-    type,
-    contractorTeam: form.contractorTeam,
-    workDescription: form.workDescription,
-    plantId: form.plantId,
-    areaId: form.areaId,
-    equipmentId: form.equipmentId,
-    workLocation: form.workLocation,
-    plannedStartAt: fromDateTimeInputValue(form.plannedStartAt),
-    plannedEndAt: fromDateTimeInputValue(form.plannedEndAt),
-    identifiedHazards: form.identifiedHazards,
-    requiredPpe: form.requiredPpe,
-    precautions: form.precautions,
-    typeData: buildTypeData(),
-  });
+  const buildPayload = (): PermitPayload => buildPermitPayload(form, type, buildTypeData());
 
   const handleNext = () => {
     setError(null);
@@ -490,7 +470,12 @@ export default function PermitForm({
                 ))}
               </datalist>
             </Field>
-            <Field id="equipment-id" label="Equipment ID" hint="Optional; known tags are suggested.">
+            <Field
+              id="equipment-id"
+              label="Equipment ID"
+              required
+              hint="Use a valid equipment UUID; known tags are suggested."
+            >
               <input
                 id="equipment-id"
                 list="equipment-options"
@@ -534,7 +519,7 @@ export default function PermitForm({
               />
             </Field>
             <div className="sm:col-span-2">
-              <Field id="identified-hazards" label="Identified hazards">
+              <Field id="identified-hazards" label="Identified hazards" required>
                 <textarea
                   id="identified-hazards"
                   value={form.identifiedHazards}
@@ -543,7 +528,7 @@ export default function PermitForm({
                 />
               </Field>
             </div>
-            <Field id="required-ppe" label="Required PPE">
+            <Field id="required-ppe" label="Required PPE" required>
               <input
                 id="required-ppe"
                 value={form.requiredPpe}
@@ -552,7 +537,7 @@ export default function PermitForm({
                 placeholder="e.g. Arc-rated suit, gloves, goggles"
               />
             </Field>
-            <Field id="precautions" label="Precautions">
+            <Field id="precautions" label="Precautions" required>
               <input
                 id="precautions"
                 value={form.precautions}

@@ -40,8 +40,14 @@ export function canDecideApproval(user: PublicUser | null, permit: Permit | null
   if (user.role === 'AREA_OWNER' && permit.areaId !== user.areaId) return false;
 
   return permit.approvals.some(
-    (approval) => approval.status === 'PENDING' && approval.requiredRole === user.role,
+    (approval) =>
+      approval.status === 'PENDING' &&
+      (user.role === 'ADMIN' || approval.requiredRole === user.role),
   );
+}
+
+export function canResumePermit(user: PublicUser | null, permit: Permit | null): boolean {
+  return Boolean(permit?.status === 'SUSPENDED' && hasPermission(user, 'permit:suspend'));
 }
 
 export function canEditDraft(user: PublicUser | null, permit: Permit | null): boolean {

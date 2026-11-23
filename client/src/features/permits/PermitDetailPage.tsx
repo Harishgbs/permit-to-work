@@ -25,6 +25,7 @@ import { formatDateTime, formatType, toDateTimeInputValue } from '../../lib/form
 import {
   canDecideApproval,
   canEditDraft,
+  canResumePermit,
   hasPermission,
 } from '../../lib/permissions';
 import type {
@@ -236,7 +237,7 @@ export default function PermitDetailPage() {
                 Suspend
               </Button>
             )}
-            {data.status === 'SUSPENDED' && hasPermission(user, 'permit:activate') && (
+            {canResumePermit(user, data) && (
               <Button icon={<RotateCcw className="h-4 w-4" aria-hidden="true" />} onClick={() => openAction('resume')}>
                 Resume
               </Button>
