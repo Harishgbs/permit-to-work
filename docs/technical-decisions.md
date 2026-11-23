@@ -28,12 +28,20 @@ Trade-off: the database does not validate the shape of each payload. Backend val
 
 Plant, Area and Equipment deletion cascades only where ownership is clear; permits reference their related records with `Restrict` or `SetNull` so historical permits cannot silently lose context. Unique constraints prevent duplicate emails, plant names, area names within a plant, equipment tags within an area, permit numbers and duplicate approval steps.
 
+## Authentication and authorization
+
+Passwords are hashed with bcrypt (cost 12) and never returned by the API. Login uses a signed JWT whose subject is the user ID; the secret comes from `JWT_SECRET` and the API refuses to start if it is shorter than 32 characters. Authentication re-reads the user from the database on each request, so a deleted or role-changed user cannot keep using an old token. Unknown users and wrong passwords return the same error to avoid account enumeration.
+
+A role-to-permission map (`src/modules/authorization/permissions.ts`) is the single source of permission rules. `requireRole` and `requirePermission` are thin middleware wrappers around it, so future permit lifecycle checks do not need scattered role conditionals. `requireAreaOwnership` receives a resolver that looks up the area from a database resource (for example `findPermitAreaId`), which prevents a client from supplying a trusted-looking `areaId` in the request body. Non-Area-Owner roles pass this check; Area Owners must match their assigned area.
+
+Zod validates login input. Demo users are seeded with a shared demo password that is hashed on every seed run; these credentials are for the assignment only.
+
 ## Remaining work
 
-- Authentication and authorization with the four roles
+- Admin-only user management, refresh tokens, password reset and account lockout
+- Frontend integration that stores and sends the JWT
 - Server-side permit validation, including per-type `typeData` rules
 - State machine and guarded transitions (approve, activate, suspend, expire, close, verify)
-- Area-owner restrictions based on assigned area
 - Audit timeline endpoint and UI
 - Dashboard filters, expiry engine, conflict detection, QR codes and extension requests
 - Deployment configuration and a presentation walkthrough
