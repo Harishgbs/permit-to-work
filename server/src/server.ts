@@ -1,5 +1,7 @@
 import { createApp } from './app';
-import { env } from './config/env';
+import { env, requireJwtSecret } from './config/env';
+
+requireJwtSecret();
 
 const app = createApp();
 
