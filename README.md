@@ -2,7 +2,7 @@
 
 A full-stack **Permit to Work (PTW)** module for a Computerized Maintenance Management System (CMMS). The goal is to provide a safety authorization workflow for hazardous maintenance activities such as hot work, confined space entry, working at height, and electrical lockout/tagout.
 
-This repository currently contains a working development foundation: application shell, REST API with a health check, email/password authentication, role and area authorization, PostgreSQL schema with migrations and seed data, and documentation. The permit workflow itself is intentionally not implemented yet.
+This repository contains a working development foundation and a backend permit workflow: application shell, REST API, email/password authentication, role and area authorization, PostgreSQL schema with migrations and seed data, permit creation with type-specific validation, a guarded approval/activation/suspension/expiry/closure state machine, work logs and an append-only audit trail.
 
 ## Domain context
 
@@ -30,7 +30,7 @@ permit-to-work/
 │   ├── src/
 │   │   ├── config/         Environment and Prisma client
 │   │   ├── middleware/     Authentication, authorization, area access, errors
-│   │   ├── modules/        Auth and authorization domain logic
+│   │   ├── modules/        Auth, authorization and permit domain logic
 │   │   ├── routes/         HTTP routes
 │   │   └── utils/          Shared helpers
 │   ├── prisma/             Schema, migrations and seed data
@@ -59,7 +59,7 @@ npm install
 cp server/.env.example server/.env
 ```
 
-Edit `server/.env` and set `DATABASE_URL` to your PostgreSQL connection string. The API port defaults to `5001` in `.env.example` (port 5000 is often used by other local services). Set `JWT_SECRET` to a random string of at least 32 characters (for example `openssl rand -hex 32`) and optionally `JWT_EXPIRES_IN` (default `1h`). `.env` is gitignored; never commit real credentials.
+Edit `server/.env` and set `DATABASE_URL` to your PostgreSQL connection string. The API port defaults to `5001` in `.env.example` (port 5000 is often used by other local services). Set `JWT_SECRET` to a random string of at least 32 characters (for example `openssl rand -hex 32`) and optionally `JWT_EXPIRES_IN` (default `1h`). `EXPIRY_SCAN_INTERVAL_MS` controls the automatic expiry scan (default `60000`). `.env` is gitignored; never commit real credentials.
 
 A lightweight local database can be started with Podman using the same file:
 
@@ -83,9 +83,9 @@ npm run prisma:migrate -w server    # create and apply migrations in development
 npm run db:seed -w server           # load repeatable demo seed data
 ```
 
-The initial migrations create the User, Plant, Area, Equipment, Permit, Approval and AuditLog tables. A second migration adds database triggers that make `AuditLog` append-only.
+The initial migrations create the User, Plant, Area, Equipment, Permit, Approval and AuditLog tables. A second migration adds database triggers that make `AuditLog` append-only. The permit lifecycle migration adds `WorkLog`, role-based approval requirements, permit validity/version fields, nullable system audit actors and a PostgreSQL sequence for permit numbers.
 
-The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates.
+The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses, with approvals where applicable. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates.
 
 **Demo-only credentials** (development and assignment presentation only, never use in production):
 
@@ -102,6 +102,68 @@ The seed script is idempotent: it creates four users (one per role), two plants,
 npm run dev:client   # frontend at http://localhost:5173
 npm run dev:server   # API at http://localhost:5001
 ```
+
+## Permit workflow API
+
+All permit endpoints require `Authorization: Bearer <token>`. The requester is derived from the token, not from the request body. Plant, area and equipment IDs must exist, the area must belong to the plant, and the equipment must belong to the area.
+
+```
+POST   /api/permits                     create a draft
+GET    /api/permits                     list permits with page/pageSize/status/type/plantId/areaId/search filters
+GET    /api/permits/:id                 get one permit
+PATCH  /api/permits/:id                 replace draft details
+POST   /api/permits/:id/submit          submit for approval
+POST   /api/permits/:id/approve         approve your role's pending step
+POST   /api/permits/:id/reject          reject with a reason
+POST   /api/permits/:id/activate        activate an approved permit
+POST   /api/permits/:id/suspend         suspend an active permit with a reason
+POST   /api/permits/:id/resume          resume a suspended permit
+POST   /api/permits/:id/close           close work
+POST   /api/permits/:id/verify          safety verification of closure
+POST   /api/permits/:id/cancel          cancel a non-terminal permit
+POST   /api/permits/:id/work-logs       add a work log while active
+```
+
+Shared fields are `contractorTeam`, `workDescription`, `plantId`, `areaId`, `equipmentId`, `workLocation`, `plannedStartAt`, `plannedEndAt`, `identifiedHazards`, `requiredPpe` and `precautions`. `typeData` is validated with a Zod discriminated union:
+
+- `HOT_WORK`: hot work type, fire watch, extinguisher type, combustibles clearance radius, LEL/O2 gas readings and timestamp.
+- `CONFINED_SPACE`: space ID, entry point, O2/LEL/H2S/CO readings and timestamp, attendant, rescue plan, ventilation and entry/exit log.
+- `WORKING_AT_HEIGHT`: height, access method, fall arrest, anchor check and barricading.
+- `ELECTRICAL_LOTO`: equipment tag, voltage, isolation points, lock/tag numbers, earthing, tested-dead confirmation and who performed it.
+
+Example `HOT_WORK` payload:
+
+```json
+{
+  "type": "HOT_WORK",
+  "contractorTeam": "Acme Maintenance",
+  "workDescription": "Replace pump bearing",
+  "plantId": "<uuid>",
+  "areaId": "<uuid>",
+  "equipmentId": "<uuid>",
+  "workLocation": "Maintenance Bay A",
+  "plannedStartAt": "2026-11-24T08:00:00.000Z",
+  "plannedEndAt": "2026-11-24T16:00:00.000Z",
+  "identifiedHazards": "Sparks and hot surfaces",
+  "requiredPpe": "Gloves, goggles, FR clothing",
+  "precautions": "Fire watch present",
+  "typeData": {
+    "hotWorkType": "WELDING",
+    "fireWatch": true,
+    "extinguisherType": "CO2",
+    "combustiblesClearanceRadiusMetres": 11,
+    "gasReadings": { "lel": 0, "o2": 20.9, "recordedAt": "2026-11-24T07:45:00.000Z" }
+  }
+}
+```
+
+### Lifecycle rules
+
+`DRAFT → PENDING_APPROVAL → APPROVED → ACTIVE → CLOSED → CLOSED_VERIFIED`; `ACTIVE ↔ SUSPENDED`; non-terminal states may be cancelled; `PENDING_APPROVAL → REJECTED`; `ACTIVE`/`SUSPENDED → EXPIRED`.
+
+Submission creates two approval requirements: area owner (step 1) and safety officer (step 2). Both must approve before activation. Requesters cannot approve their own permits, Area Owners only approve their assigned area, Safety Officers approve across areas, and administrators have full access. Permit transitions use Prisma transactions and an optimistic `version` guard, so concurrent approvals or transitions cannot silently overwrite each other.
+
+Activation requires a time at or after `plannedStartAt` and sets `validUntil` from the request or `plannedEndAt`. The API runs an expiry scan at startup and every `EXPIRY_SCAN_INTERVAL_MS`, marking due `ACTIVE`/`SUSPENDED` permits as `EXPIRED` with a system audit entry. Expired permits cannot be reactivated; a new permit is required. Work logs are accepted only while a permit is `ACTIVE`.
 
 ## Verification commands
 
@@ -156,6 +218,10 @@ Authorization is centralized in reusable middleware: `requireRole(...roles)` and
 - No public registration or admin user management endpoint; user management is deferred.
 - No refresh tokens, password reset, email verification or account lockout.
 - The frontend does not yet store or send the JWT; it remains a placeholder shell.
-- No permit creation workflow, approval state machine, audit timeline, dashboards, expiry engine, QR codes, conflict detection or permit type-specific validation.
+- No audit timeline endpoint or UI; audit entries are currently database records only.
+- No dashboards, conflict detection, QR codes or extension requests.
+- The frontend does not yet use the permit API; it remains a shell.
+- Expiry scanning runs while the API process is running. A production deployment should also run a scheduler so permits are expired even if the API is stopped; the startup scan catches up on restart.
+- Integration tests create unique fixture records in the configured database. Because `AuditLog` is append-only, those records are intentionally not deleted; use a disposable test database for repeated runs.
 
 See `docs/technical-decisions.md` for design notes and remaining work.

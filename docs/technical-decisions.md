@@ -18,11 +18,11 @@ All permit types share the same lifecycle (draft, approval, active, suspension, 
 
 `Permit.typeData` is a PostgreSQL `JSONB` column exposed as Prisma `Json`. It holds payloads such as gas-test results for hot work or isolation points for electrical LOTO.
 
-Trade-off: the database does not validate the shape of each payload. Backend validation for each permit type will be added with the permit creation workflow, and a GIN index can be added later if queries need to filter on payload fields. The shared columns remain strongly typed so search and lifecycle logic stay simple.
+Trade-off: the database does not validate the shape of each payload. Backend validation uses a Zod discriminated union on `type`, so hot work, confined space, working-at-height and electrical LOTO payloads are checked before any write. A GIN index can be added later if queries need to filter on payload fields. The shared columns remain strongly typed so search and lifecycle logic stay simple.
 
 ## Audit trail
 
-`AuditLog` records the permit, actor, action, previous value, new value, comment and timestamp. A migration adds `BEFORE UPDATE` and `BEFORE DELETE` triggers that reject any modification, making the log append-only even for privileged application code. Corrections must be written as new entries. This is a schema-level guarantee, not just an application convention.
+`AuditLog` records the permit, actor, action, previous value, new value, comment and timestamp. A migration adds `BEFORE UPDATE` and `BEFORE DELETE` triggers that reject any modification, making the log append-only even for privileged application code. Corrections must be written as new entries. This is a schema-level guarantee, not just an application convention. Automated expiry writes entries with `systemAction = true` and no actor; API reads can present those as `SYSTEM`.
 
 ## Deleted and restricted records
 
@@ -32,16 +32,35 @@ Plant, Area and Equipment deletion cascades only where ownership is clear; permi
 
 Passwords are hashed with bcrypt (cost 12) and never returned by the API. Login uses a signed JWT whose subject is the user ID; the secret comes from `JWT_SECRET` and the API refuses to start if it is shorter than 32 characters. Authentication re-reads the user from the database on each request, so a deleted or role-changed user cannot keep using an old token. Unknown users and wrong passwords return the same error to avoid account enumeration.
 
-A role-to-permission map (`src/modules/authorization/permissions.ts`) is the single source of permission rules. `requireRole` and `requirePermission` are thin middleware wrappers around it, so future permit lifecycle checks do not need scattered role conditionals. `requireAreaOwnership` receives a resolver that looks up the area from a database resource (for example `findPermitAreaId`), which prevents a client from supplying a trusted-looking `areaId` in the request body. Non-Area-Owner roles pass this check; Area Owners must match their assigned area.
+A role-to-permission map (`src/modules/authorization/permissions.ts`) is the single source of permission rules. `requireRole` and `requirePermission` are thin middleware wrappers around it, so permit lifecycle checks do not need scattered role conditionals. `requireAreaOwnership` receives a resolver that looks up the area from a database resource (for example `findPermitAreaId`), which prevents a client from supplying a trusted-looking `areaId` in the request body. Non-Area-Owner roles pass this check; Area Owners must match their assigned area.
 
 Zod validates login input. Demo users are seeded with a shared demo password that is hashed on every seed run; these credentials are for the assignment only.
+
+## Permit validation
+
+All create and edit requests pass through one Zod schema. Shared fields are validated once and each permit type contributes its own `typeData` schema. `plannedEndAt` must be after `plannedStartAt`. The requester is always taken from the authenticated token; a client-supplied requester is ignored. Plant, area and equipment relationships are checked in the same database transaction as the write, so an area from another plant or equipment from another area is rejected.
+
+## State machine and approvals
+
+`ALLOWED_TRANSITIONS` in `src/modules/permits/state-machine.ts` is the single source of legal status changes. Routes and services call `assertTransition` before writes. Submission creates two `Approval` rows with `requiredRole` values `AREA_OWNER` and `SAFETY_OFFICER`; `approverId` stays null until the step is decided. The permit becomes `APPROVED` only when no pending approvals remain. Requesters cannot decide their own permits. Area Owners are additionally checked against the permit's server-side area; Safety Officers and Administrators can decide across areas.
+
+## Concurrency
+
+Every lifecycle change runs in a Prisma transaction. Permit updates use `updateMany` guarded by both the expected status and `version`, so a concurrent second transition cannot overwrite the first; it receives HTTP 409 and the client can reload. Approval decisions use `updateMany` guarded by `status = PENDING`, and the `[permitId, step]` unique constraint prevents duplicate approval requirements.
+
+## Expiry and work logs
+
+A permit stores `validUntil`, set on activation from the request or `plannedEndAt`. The API scans due `ACTIVE` and `SUSPENDED` permits at startup and on an interval controlled by `EXPIRY_SCAN_INTERVAL_MS`, writing a system audit entry for each transition to `EXPIRED`. Expired permits cannot be reactivated. `WorkLog` rows are accepted only while a permit is `ACTIVE` and reference the authenticated actor.
+
+## Permit numbers
+
+A PostgreSQL sequence generates monotonic numbers formatted as `PTW-<year>-<six digits>`. The database sequence avoids duplicate numbers under concurrent creation; the unique index on `Permit.permitNumber` remains the final guard.
 
 ## Remaining work
 
 - Admin-only user management, refresh tokens, password reset and account lockout
-- Frontend integration that stores and sends the JWT
-- Server-side permit validation, including per-type `typeData` rules
-- State machine and guarded transitions (approve, activate, suspend, expire, close, verify)
+- Frontend integration that stores and sends the JWT and calls the permit API
 - Audit timeline endpoint and UI
-- Dashboard filters, expiry engine, conflict detection, QR codes and extension requests
+- Dashboard filters, conflict detection, QR codes and extension requests
+- External scheduler for expiry when the API process is stopped
 - Deployment configuration and a presentation walkthrough

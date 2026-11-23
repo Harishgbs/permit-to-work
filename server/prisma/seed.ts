@@ -1,4 +1,4 @@
-import { PrismaClient, type PermitStatus, type PermitType, type Prisma, type Role } from '@prisma/client';
+import { PrismaClient, type ApprovalStatus, type PermitStatus, type PermitType, type Prisma, type Role } from '@prisma/client';
 import { hashPassword } from '../src/utils/password';
 
 const prisma = new PrismaClient();
@@ -59,7 +59,13 @@ const permitData: PermitSeed[] = [
     hazards: 'Hot surfaces, sparks, nearby combustibles',
     ppe: 'Heat-resistant gloves, safety glasses, FR clothing',
     precautions: 'Fire watch present; gas test before ignition',
-    typeData: { hotWork: { gasTestRequired: true, fireWatchRequired: true } },
+    typeData: {
+      hotWorkType: 'WELDING',
+      fireWatch: true,
+      extinguisherType: 'CO2',
+      combustiblesClearanceRadiusMetres: 11,
+      gasReadings: { lel: 0, o2: 20.9, recordedAt: '2026-12-01T07:45:00.000Z' },
+    },
   },
   {
     number: 'PTW-DEMO-0002',
@@ -72,7 +78,15 @@ const permitData: PermitSeed[] = [
     hazards: 'Limited oxygen, residual chemical vapour',
     ppe: 'Respirator, harness, gas monitor',
     precautions: 'Ventilate and test atmosphere before entry',
-    typeData: { confinedSpace: { entryMonitorRequired: true, rescuePlanRequired: true } },
+    typeData: {
+      spaceId: 'TNK-401',
+      entryPoint: 'Top manway',
+      atmosphericReadings: { o2: 20.6, lel: 0, h2s: 0, co: 2, recordedAt: '2026-12-02T07:45:00.000Z' },
+      attendant: 'Seed Attendant',
+      rescuePlan: 'Tripod and winch standby',
+      ventilation: 'Forced air, 1200 m3/h',
+      entryExitLog: 'Tank entry register',
+    },
   },
   {
     number: 'PTW-DEMO-0003',
@@ -85,7 +99,13 @@ const permitData: PermitSeed[] = [
     hazards: 'Fall from height, dropped objects',
     ppe: 'Harness, hard hat, safety shoes',
     precautions: 'Guardrails inspected; tool tethers in use',
-    typeData: { workingAtHeight: { heightMetres: 4, fallArrestRequired: true } },
+    typeData: {
+      heightMetres: 4,
+      accessMethod: 'Scaffold platform',
+      fallArrest: true,
+      anchorCheck: 'Anchor point A7 inspected',
+      barricading: true,
+    },
   },
   {
     number: 'PTW-DEMO-0004',
@@ -98,7 +118,15 @@ const permitData: PermitSeed[] = [
     hazards: 'Electrical arc flash, stored energy',
     ppe: 'Arc-rated suit, insulated gloves, face shield',
     precautions: 'Isolation points locked and tagged; verify zero energy',
-    typeData: { electricalLoto: { isolationPoints: 3, verifiedDeEnergized: true } },
+    typeData: {
+      equipmentTag: 'ELE-301',
+      voltage: 415,
+      isolationPoints: 3,
+      lockTagNumbers: ['LOTO-301-A', 'LOTO-301-B', 'LOTO-301-C'],
+      earthing: true,
+      testedDead: true,
+      testedDeadBy: 'Seed Electrician',
+    },
   },
   {
     number: 'PTW-DEMO-0005',
@@ -111,7 +139,13 @@ const permitData: PermitSeed[] = [
     hazards: 'Sparks near packaging material',
     ppe: 'Welding helmet, fire-resistant clothing',
     precautions: 'Work paused pending fire-watch reassignment',
-    typeData: { hotWork: { gasTestRequired: true, fireWatchRequired: true } },
+    typeData: {
+      hotWorkType: 'WELDING',
+      fireWatch: true,
+      extinguisherType: 'Dry powder',
+      combustiblesClearanceRadiusMetres: 12,
+      gasReadings: { lel: 0, o2: 20.8, recordedAt: '2026-12-03T07:45:00.000Z' },
+    },
   },
   {
     number: 'PTW-DEMO-0006',
@@ -124,7 +158,15 @@ const permitData: PermitSeed[] = [
     hazards: 'Toxic atmosphere, engulfment',
     ppe: 'Respirator, chemical suit, harness',
     precautions: 'Rescue plan incomplete; resubmission required',
-    typeData: { confinedSpace: { entryMonitorRequired: true, rescuePlanRequired: false } },
+    typeData: {
+      spaceId: 'TNK-401',
+      entryPoint: 'Bottom hatch',
+      atmosphericReadings: { o2: 19.4, lel: 0, h2s: 5, co: 12, recordedAt: '2026-12-04T07:45:00.000Z' },
+      attendant: 'Seed Attendant',
+      rescuePlan: 'Incomplete rescue plan',
+      ventilation: 'Natural ventilation',
+      entryExitLog: 'Tank entry register',
+    },
   },
   {
     number: 'PTW-DEMO-0007',
@@ -137,7 +179,13 @@ const permitData: PermitSeed[] = [
     hazards: 'Fall from ladder, chemical exposure',
     ppe: 'Harness, gloves, eye protection',
     precautions: 'Permit validity elapsed before work completed',
-    typeData: { workingAtHeight: { heightMetres: 3, fallArrestRequired: true } },
+    typeData: {
+      heightMetres: 3,
+      accessMethod: 'Extension ladder',
+      fallArrest: true,
+      anchorCheck: 'Utility yard anchor rail inspected',
+      barricading: true,
+    },
   },
   {
     number: 'PTW-DEMO-0008',
@@ -150,7 +198,15 @@ const permitData: PermitSeed[] = [
     hazards: 'Unexpected energisation',
     ppe: 'Insulated gloves, voltage tester',
     precautions: 'LOTO removed after work completion',
-    typeData: { electricalLoto: { isolationPoints: 2, verifiedDeEnergized: true } },
+    typeData: {
+      equipmentTag: 'ELE-301',
+      voltage: 230,
+      isolationPoints: 2,
+      lockTagNumbers: ['LOTO-CTL-1', 'LOTO-CTL-2'],
+      earthing: true,
+      testedDead: true,
+      testedDeadBy: 'Seed Electrician',
+    },
   },
   {
     number: 'PTW-DEMO-0009',
@@ -163,7 +219,13 @@ const permitData: PermitSeed[] = [
     hazards: 'Fire, hot metal',
     ppe: 'Welding helmet, gloves, FR clothing',
     precautions: 'Final fire watch completed and signed off',
-    typeData: { hotWork: { gasTestRequired: true, fireWatchRequired: true } },
+    typeData: {
+      hotWorkType: 'CUTTING',
+      fireWatch: true,
+      extinguisherType: 'CO2',
+      combustiblesClearanceRadiusMetres: 10,
+      gasReadings: { lel: 0, o2: 20.9, recordedAt: '2026-12-06T07:45:00.000Z' },
+    },
   },
   {
     number: 'PTW-DEMO-0010',
@@ -176,7 +238,15 @@ const permitData: PermitSeed[] = [
     hazards: 'Confined space, poor ventilation',
     ppe: 'Gas monitor, harness',
     precautions: 'Cancelled because production schedule changed',
-    typeData: { confinedSpace: { entryMonitorRequired: true, rescuePlanRequired: true } },
+    typeData: {
+      spaceId: 'CNV-PIT-01',
+      entryPoint: 'Access stair',
+      atmosphericReadings: { o2: 20.7, lel: 0, h2s: 0, co: 3, recordedAt: '2026-12-07T07:45:00.000Z' },
+      attendant: 'Seed Attendant',
+      rescuePlan: 'Tripod and winch standby',
+      ventilation: 'Forced air, 800 m3/h',
+      entryExitLog: 'Pit entry register',
+    },
   },
 ];
 
@@ -238,10 +308,15 @@ async function main() {
     const requesterId = userIds.get('requester@example.com')!;
     const plannedStartAt = new Date(Date.UTC(2026, 11, 1 + (index % 5), 8, 0));
     const plannedEndAt = new Date(plannedStartAt.getTime() + 8 * 60 * 60 * 1000);
+    const validityEnded = permit.status === 'EXPIRED';
+    const validitySet = ['ACTIVE', 'SUSPENDED', 'CLOSED', 'CLOSED_VERIFIED', 'EXPIRED'].includes(permit.status);
+    const validUntil = validitySet
+      ? new Date(Date.now() + (validityEnded ? -1 : 7) * 24 * 60 * 60 * 1000)
+      : null;
 
     const record = await prisma.permit.upsert({
       where: { permitNumber: permit.number },
-      update: {},
+      update: { typeData: permit.typeData, validUntil },
       create: {
         permitNumber: permit.number,
         type: permit.type,
@@ -259,29 +334,51 @@ async function main() {
         requiredPpe: permit.ppe,
         precautions: permit.precautions,
         typeData: permit.typeData,
+        validUntil,
       },
     });
 
-    if (index === 0) {
-      await prisma.approval.upsert({
-        where: { permitId_step: { permitId: record.id, step: 1 } },
-        update: {},
-        create: {
-          permitId: record.id,
-          approverId: userIds.get('area-owner@example.com')!,
-          step: 1,
-          status: 'PENDING',
-        },
-      });
+    if (permit.status !== 'DRAFT') {
+      const approvalDefinitions: { step: number; requiredRole: Role; approverId: string }[] = [
+        { step: 1, requiredRole: 'AREA_OWNER', approverId: userIds.get('area-owner@example.com')! },
+        { step: 2, requiredRole: 'SAFETY_OFFICER', approverId: userIds.get('safety-officer@example.com')! },
+      ];
+
+      for (const definition of approvalDefinitions) {
+        const status: ApprovalStatus =
+          permit.status === 'REJECTED' && definition.step === 2
+            ? 'REJECTED'
+            : permit.status === 'PENDING_APPROVAL'
+              ? 'PENDING'
+              : 'APPROVED';
+
+        await prisma.approval.upsert({
+          where: { permitId_step: { permitId: record.id, step: definition.step } },
+          update: {
+            requiredRole: definition.requiredRole,
+            approverId: status === 'PENDING' ? null : definition.approverId,
+            status,
+            decidedAt: status === 'PENDING' ? null : new Date(),
+          },
+          create: {
+            permitId: record.id,
+            requiredRole: definition.requiredRole,
+            approverId: status === 'PENDING' ? null : definition.approverId,
+            step: definition.step,
+            status,
+            decidedAt: status === 'PENDING' ? null : new Date(),
+          },
+        });
+      }
     }
 
     const existingAuditEntry = await prisma.auditLog.count({
-      where: { permitId: record.id, action: 'CREATED' },
+      where: { permitId: record.id, action: { in: ['CREATED', 'PERMIT_CREATED'] } },
     });
 
     if (existingAuditEntry === 0) {
       await prisma.auditLog.create({
-        data: { permitId: record.id, actorId: requesterId, action: 'CREATED', toValue: 'DRAFT' },
+        data: { permitId: record.id, actorId: requesterId, action: 'PERMIT_CREATED', toValue: 'DRAFT' },
       });
     }
   }
