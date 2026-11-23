@@ -1,4 +1,5 @@
 import express from 'express';
+import { corsMiddleware } from './middleware/cors.middleware';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
 import { authRouter } from './routes/auth.routes';
 import { healthRouter } from './routes/health.routes';
@@ -7,6 +8,7 @@ import { permitsRouter } from './routes/permits.routes';
 export function createApp() {
   const app = express();
 
+  app.use(corsMiddleware);
   app.use(express.json());
   app.use('/api', healthRouter);
   app.use('/api/auth', authRouter);

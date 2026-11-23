@@ -187,6 +187,12 @@ npm test             # Vitest + Supertest API tests
 npm run build        # production build of client and server
 ```
 
+## Deployment
+
+The repository includes `vercel.json` and `render.yaml` for Vercel and Render, with Neon PostgreSQL as the production database. See `docs/deployment.md` for platform setup steps and the complete list of required environment variables. Production secrets are entered only in the platform dashboards; `.env` files are gitignored and no secret values are stored in the repository.
+
+The Render service binds to the platform-provided `PORT` on `0.0.0.0`, allows origins listed in `CORS_ORIGIN`, and runs `prisma migrate deploy` before startup. Seeding is manual and only appropriate when demo data is wanted.
+
 ## Health check
 
 ```
@@ -231,10 +237,8 @@ Authorization is centralized in reusable middleware: `requireRole(...roles)` and
 
 - No public registration or admin user management endpoint; user management is deferred.
 - No refresh tokens, password reset, email verification or account lockout.
-- The frontend does not yet store or send the JWT; it remains a placeholder shell.
 - No audit timeline endpoint or UI; audit entries are currently database records only.
 - No dashboards, conflict detection, QR codes or extension requests.
-- The frontend does not yet use the permit API; it remains a shell.
 - Expiry scanning runs while the API process is running. A production deployment should also run a scheduler so permits are expired even if the API is stopped; the startup scan catches up on restart.
 - Integration tests create unique fixture records in the configured database. Because `AuditLog` is append-only, those records are intentionally not deleted; use a disposable test database for repeated runs.
 

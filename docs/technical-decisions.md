@@ -74,4 +74,4 @@ Reference data is derived from existing permit responses because no plant, area 
 - Work-log list endpoint with a full activity timeline
 - Dashboard conflict detection, QR codes and extension requests
 - External scheduler for expiry when the API process is stopped
-- Deployment configuration and a presentation walkthrough
+- Presentation walkthrough
