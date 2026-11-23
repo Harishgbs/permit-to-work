@@ -43,6 +43,20 @@ Never commit `.env` files or paste secrets into chat. The Blueprint generates `J
 9. The start command runs `prisma migrate deploy` before starting the API. No reset command is used.
 10. Verify `GET /api/health` returns `{"status":"ok"}`.
 
+### Manual Render web service settings
+
+If you create a normal **Web Service** instead of a Blueprint, use these exact fields:
+
+| Field | Value |
+| --- | --- |
+| Branch | `main` |
+| Root Directory | leave blank |
+| Build Command | `npm ci --include=dev && npm run prisma:generate --workspace server && npm run build --workspace server` |
+| Start Command | `npm run prisma:migrate:deploy --workspace server && npm run start --workspace server` |
+| Health Check Path | `/api/health` |
+
+The build must include dev dependencies explicitly because `NODE_ENV=production` makes `npm ci` omit pure dev dependencies such as `@types/node`. Do not use **Add from .env** in the Render dashboard; local `.env` files point to the local Podman database.
+
 Production seeding is intentionally not automatic. The seed script is idempotent but creates demo users and permits. If demo accounts are required, use Render Shell and run:
 
 ```bash
