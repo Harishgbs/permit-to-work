@@ -56,11 +56,22 @@ A permit stores `validUntil`, set on activation from the request or `plannedEndA
 
 A PostgreSQL sequence generates monotonic numbers formatted as `PTW-<year>-<six digits>`. The database sequence avoids duplicate numbers under concurrent creation; the unique index on `Permit.permitNumber` remains the final guard.
 
+## Frontend integration
+
+The React client uses a single typed API module built on `fetch`. It sends the JWT as a bearer token, normalizes `{ error }` responses into `ApiError`, and clears the session on HTTP 401. A Vite dev proxy maps `/api` to `http://localhost:5001`, avoiding CORS in local development; `VITE_API_BASE_URL` can override the API origin for other environments.
+
+`localStorage` is used for the demo token because it is simple and works with the current stateless API. The trade-off is XSS exposure, so a production deployment should move to HttpOnly cookies with CSRF protection and refresh-token rotation.
+
+The UI uses role-aware navigation and action rendering only as a usability layer. Every mutation still calls the backend, where permission checks, state transitions and optimistic version guards are enforced.
+
+Reference data is derived from existing permit responses because no plant, area or equipment read endpoints exist. The permit form accepts IDs directly, so the first permit can still be created from an empty database. Work-log entries can be added while a permit is active, but entries cannot be listed because the API has no work-log read endpoint. Similarly, the activity screen explains that the append-only audit table has no read endpoint yet instead of presenting placeholder data as a working feature.
+
 ## Remaining work
 
 - Admin-only user management, refresh tokens, password reset and account lockout
-- Frontend integration that stores and sends the JWT and calls the permit API
 - Audit timeline endpoint and UI
-- Dashboard filters, conflict detection, QR codes and extension requests
+- Plant, area and equipment read endpoints with dependent selects
+- Work-log list endpoint with a full activity timeline
+- Dashboard conflict detection, QR codes and extension requests
 - External scheduler for expiry when the API process is stopped
 - Deployment configuration and a presentation walkthrough
