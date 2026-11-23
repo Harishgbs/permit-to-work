@@ -1,0 +1,20 @@
+{
+  "name": "permit-to-work",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Full-stack Permit to Work safety management module for a CMMS",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace server",
+    "build": "npm run build --workspace client && npm run build --workspace server",
+    "typecheck": "npm run typecheck --workspace client && npm run typecheck --workspace server",
+    "test": "npm run test --workspace server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
