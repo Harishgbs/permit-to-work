@@ -64,7 +64,7 @@ cp server/.env.example server/.env
 cp client/.env.example client/.env
 ```
 
-Edit `server/.env` and set `DATABASE_URL` to your PostgreSQL connection string. The API port defaults to `5001` in `.env.example` (port 5000 is often used by other local services). Set `JWT_SECRET` to a random string of at least 32 characters (for example `openssl rand -hex 32`) and optionally `JWT_EXPIRES_IN` (default `1h`). `EXPIRY_SCAN_INTERVAL_MS` controls the automatic expiry scan (default `60000`). `.env` is gitignored; never commit real credentials.
+Edit `server/.env` and set `DATABASE_URL` to your PostgreSQL connection string. Set `DIRECT_URL` to a non-pooled connection string for Prisma CLI migrations; locally it can be the same value as `DATABASE_URL`. The API port defaults to `5001` in `.env.example` (port 5000 is often used by other local services). Set `JWT_SECRET` to a random string of at least 32 characters (for example `openssl rand -hex 32`) and optionally `JWT_EXPIRES_IN` (default `1h`). `EXPIRY_SCAN_INTERVAL_MS` controls the automatic expiry scan (default `60000`). `.env` is gitignored; never commit real credentials.
 
 A lightweight local database can be started with Podman using the same file:
 
@@ -195,6 +195,7 @@ Activation requires a time at or after `plannedStartAt` and sets `validUntil` fr
 ## Technical decisions
 
 - PostgreSQL and Prisma were chosen for relational integrity, typed queries, enums and versioned SQL migrations. One shared `Permit` table avoids four duplicate lifecycles; type-specific fields live in `typeData` JSONB and are validated by Zod.
+- Prisma Client uses the pooled `DATABASE_URL`; Prisma CLI migrations use the non-pooled `DIRECT_URL`. Migration advisory locks require a stable database session, so using the pooler for migrations can cause intermittent P1002 timeouts.
 - Authorization is centralized in a role-to-permission map and server-side middleware. Area Owners are restricted to their assigned area; Safety Officers act across areas; administrators follow the existing permission and approval rules.
 - Lifecycle writes run in transactions with a status-and-version guard to prevent concurrent transitions from silently overwriting each other. Audit entries are append-only at the database level.
 - The JWT is stored in `localStorage` for a simple stateless demo. This is XSS-sensitive; HttpOnly cookies, CSRF protection and refresh-token rotation are future production work.
