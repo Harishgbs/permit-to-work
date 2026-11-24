@@ -24,6 +24,12 @@ import { useToast } from '../../components/ui/ToastProvider';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { api } from '../../lib/api';
 import {
+  buildVerifyPayload,
+  canClosePermit,
+  canVerifyClosure,
+  validateCompletionNotes,
+} from '../../lib/closure';
+import {
   formatAuditAction,
   formatAuditActor,
   formatAuditValue,
@@ -57,6 +63,10 @@ type ActionKind =
   | 'cancel'
   | 'worklog';
 
+type ClosurePayload =
+  | { kind: 'close'; completionNotes: string }
+  | { kind: 'verify'; areaClean: true; comment?: string };
+
 export default function PermitDetailPage() {
   const { id = '' } = useParams();
   const { user } = useAuth();
@@ -70,6 +80,7 @@ export default function PermitDetailPage() {
   } = useAsyncData(() => api.getPermitAudit(id), [id]);
   const [action, setAction] = useState<ActionKind | null>(null);
   const [note, setNote] = useState('');
+  const [areaClean, setAreaClean] = useState(false);
   const [validUntil, setValidUntil] = useState(toDateTimeInputValue(new Date().toISOString()));
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -89,13 +100,14 @@ export default function PermitDetailPage() {
   const openAction = (kind: ActionKind) => {
     setAction(kind);
     setNote('');
+    setAreaClean(false);
     setActionError(null);
     if (kind === 'activate') {
       setValidUntil(toDateTimeInputValue(data.validUntil ?? new Date().toISOString()));
     }
   };
 
-  const runAction = async (kind: ActionKind) => {
+  const runAction = async (kind: ActionKind, closurePayload?: ClosurePayload) => {
     setBusy(true);
     setActionError(null);
 
@@ -125,12 +137,21 @@ export default function PermitDetailPage() {
           notify('Permit resumed.');
           break;
         case 'close':
-          await api.closePermit(id, note.trim() ? { comment: note.trim() } : {});
-          notify('Permit closed.');
+          if (closurePayload?.kind !== 'close') {
+            throw new Error('Completion notes are required.');
+          }
+          await api.closePermit(id, { completionNotes: closurePayload.completionNotes });
+          notify('Work closed with completion notes.');
           break;
         case 'verify':
-          await api.verifyPermit(id, note.trim() ? { comment: note.trim() } : {});
-          notify('Permit verified.');
+          if (closurePayload?.kind !== 'verify' || !closurePayload.areaClean) {
+            throw new Error('Confirm the work area is clean and safe.');
+          }
+          await api.verifyPermit(id, {
+            areaClean: true,
+            ...(closurePayload.comment ? { comment: closurePayload.comment } : {}),
+          });
+          notify('Closure verified.');
           break;
         case 'cancel':
           await api.cancelPermit(id, { reason: note.trim() });
@@ -165,7 +186,12 @@ export default function PermitDetailPage() {
     }
   };
 
-  const requiresText = action === 'reject' || action === 'suspend' || action === 'cancel' || action === 'worklog';
+  const requiresText =
+    action === 'reject' ||
+    action === 'suspend' ||
+    action === 'cancel' ||
+    action === 'worklog' ||
+    action === 'close';
   const actionTitle: Record<ActionKind, string> = {
     approve: 'Approve permit',
     reject: 'Reject permit',
@@ -179,6 +205,30 @@ export default function PermitDetailPage() {
   };
 
   const handleConfirm = () => {
+    if (action === 'close') {
+      try {
+        void runAction(action, {
+          kind: 'close',
+          completionNotes: validateCompletionNotes(note),
+        });
+      } catch (caught) {
+        setActionError(caught instanceof Error ? caught.message : 'Completion notes are required.');
+      }
+      return;
+    }
+
+    if (action === 'verify') {
+      try {
+        const payload = buildVerifyPayload(areaClean, note);
+        void runAction(action, { kind: 'verify', ...payload });
+      } catch (caught) {
+        setActionError(
+          caught instanceof Error ? caught.message : 'Confirm the work area is clean and safe.',
+        );
+      }
+      return;
+    }
+
     if (requiresText && !note.trim()) {
       setActionError(action === 'worklog' ? 'A work log note is required.' : 'A reason is required.');
       return;
@@ -264,12 +314,12 @@ export default function PermitDetailPage() {
                 Resume
               </Button>
             )}
-            {['ACTIVE', 'SUSPENDED'].includes(data.status) && hasPermission(user, 'permit:close') && (
+            {canClosePermit(user, data) && (
               <Button variant="secondary" onClick={() => openAction('close')}>
                 Close work
               </Button>
             )}
-            {data.status === 'CLOSED' && hasPermission(user, 'permit:verify') && (
+            {canVerifyClosure(user, data) && (
               <Button icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} onClick={() => openAction('verify')}>
                 Verify closeout
               </Button>
@@ -355,6 +405,36 @@ export default function PermitDetailPage() {
             </li>
           ))}
         </ol>
+      </Card>
+
+      <Card
+        title="Closure record"
+        description="Requester completion notes and safety closeout verification."
+      >
+        {data.completionNotes || data.verificationAreaClean || data.verificationComment ? (
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Detail label="Completion notes" value={data.completionNotes ?? 'Not recorded'} />
+            </div>
+            <Detail
+              label="Area clean and safe"
+              value={data.verificationAreaClean ? 'Confirmed' : 'Not confirmed'}
+            />
+            <Detail label="Verified by" value={data.verifiedBy?.name ?? 'Not verified'} />
+            {data.verificationComment && (
+              <div className="sm:col-span-2">
+                <Detail label="Verification notes" value={data.verificationComment} />
+              </div>
+            )}
+            {data.verifiedAt && (
+              <Detail label="Verified at" value={formatDateTime(data.verifiedAt)} />
+            )}
+          </dl>
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-500">
+            No closure information has been recorded yet.
+          </p>
+        )}
       </Card>
 
       <Card
@@ -453,7 +533,17 @@ export default function PermitDetailPage() {
           {action !== 'activate' && (
             <Field
               id="action-note"
-              label={action === 'worklog' ? 'Work log note' : requiresText ? 'Reason' : 'Comment (optional)'}
+              label={
+                action === 'worklog'
+                  ? 'Work log note'
+                  : action === 'close'
+                    ? 'Completion notes'
+                    : action === 'verify'
+                      ? 'Verification notes (optional)'
+                      : requiresText
+                        ? 'Reason'
+                        : 'Comment (optional)'
+              }
               required={requiresText}
             >
               <textarea
@@ -464,6 +554,23 @@ export default function PermitDetailPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </Field>
+          )}
+          {action === 'close' && (
+            <p className="text-xs text-slate-500">
+              Describe the work completed and any remaining risks. This note is required and is
+              recorded in the audit history.
+            </p>
+          )}
+          {action === 'verify' && (
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={areaClean}
+                onChange={(event) => setAreaClean(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>I confirm the work area is clean and safe.</span>
+            </label>
           )}
           {action === 'activate' && (
             <Field id="activate-comment" label="Comment (optional)">

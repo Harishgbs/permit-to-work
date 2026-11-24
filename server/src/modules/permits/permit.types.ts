@@ -11,6 +11,7 @@ export const permitInclude = {
   plant: { select: { id: true, name: true } },
   area: { select: { id: true, name: true } },
   equipment: { select: { id: true, tag: true, name: true } },
+  verifiedBy: { select: { id: true, name: true, email: true, role: true } },
   approvals: { orderBy: { step: 'asc' as const } },
   _count: { select: { workLogs: true } },
 } satisfies Prisma.PermitInclude;

@@ -124,6 +124,17 @@ export const decisionSchema = z.object({
   comment: z.string().trim().optional(),
 });
 
+export const closeSchema = z.object({
+  completionNotes: z.string().trim().min(1, 'Completion notes are required'),
+});
+
+export const verificationSchema = z.object({
+  areaClean: z.literal(true, {
+    message: 'Confirm the work area is clean and safe',
+  }),
+  comment: z.string().trim().optional(),
+});
+
 export const rejectionSchema = z.object({
   reason: requiredText,
 });

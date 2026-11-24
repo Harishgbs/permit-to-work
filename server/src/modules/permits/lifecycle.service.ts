@@ -19,7 +19,7 @@ async function transitionPermit(
   actor: PermitActor,
   action: string,
   comment?: string,
-  extra: Prisma.PermitUpdateManyMutationInput = {},
+  extra: Prisma.PermitUncheckedUpdateManyInput = {},
 ): Promise<void> {
   assertTransition(permit.status, to);
 
@@ -240,7 +240,13 @@ export async function resumePermit(id: string, actor: PermitActor, comment?: str
   });
 }
 
-export async function closePermit(id: string, actor: PermitActor, comment?: string) {
+export async function closePermit(id: string, actor: PermitActor, completionNotes: string) {
+  const notes = completionNotes.trim();
+
+  if (!notes) {
+    throw new HttpError(400, 'Completion notes are required');
+  }
+
   return prisma.$transaction(async (tx) => {
     const permit = await findPermitOrThrow(id, tx);
 
@@ -254,13 +260,31 @@ export async function closePermit(id: string, actor: PermitActor, comment?: stri
       throw new HttpError(409, 'Only an active permit can be closed');
     }
 
-    await transitionPermit(tx, permit, 'CLOSED', actor, 'PERMIT_CLOSED', comment);
+    await transitionPermit(tx, permit, 'CLOSED', actor, 'PERMIT_CLOSED', notes, {
+      completionNotes: notes,
+      verificationAreaClean: null,
+      verificationComment: null,
+      verifiedById: null,
+      verifiedAt: null,
+    });
 
     return findPermitWithRelationsOrThrow(id, tx);
   });
 }
 
-export async function verifyPermit(id: string, actor: PermitActor, comment?: string) {
+export async function verifyPermit(
+  id: string,
+  actor: PermitActor,
+  input: { areaClean: true; comment?: string },
+) {
+  if (!['SAFETY_OFFICER', 'ADMIN'].includes(actor.role)) {
+    throw new HttpError(403, 'Only a safety officer may verify closure');
+  }
+
+  if (input.areaClean !== true) {
+    throw new HttpError(400, 'Confirm the work area is clean and safe');
+  }
+
   return prisma.$transaction(async (tx) => {
     const permit = await findPermitOrThrow(id, tx);
 
@@ -268,13 +292,28 @@ export async function verifyPermit(id: string, actor: PermitActor, comment?: str
       throw new HttpError(409, 'Only a closed permit can be verified');
     }
 
+    if (!permit.completionNotes?.trim()) {
+      throw new HttpError(409, 'Completion notes are required before closure can be verified');
+    }
+
+    const verificationComment = input.comment?.trim();
+    const auditComment = verificationComment
+      ? `Work area confirmed clean and safe. ${verificationComment}`
+      : 'Work area confirmed clean and safe';
+
     await transitionPermit(
       tx,
       permit,
       'CLOSED_VERIFIED',
       actor,
       'PERMIT_VERIFIED',
-      comment ?? 'Closure verified by safety officer',
+      auditComment,
+      {
+        verificationAreaClean: true,
+        verificationComment: verificationComment ?? null,
+        verifiedById: actor.id,
+        verifiedAt: new Date(),
+      },
     );
 
     return findPermitWithRelationsOrThrow(id, tx);

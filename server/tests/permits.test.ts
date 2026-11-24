@@ -178,6 +178,12 @@ async function activate(permitId: string, overrides: Record<string, unknown> = {
   return response.body;
 }
 
+async function activePermit() {
+  const permitId = await advanceToApproved();
+  await activate(permitId);
+  return permitId;
+}
+
 describe('permit validation and creation', () => {
   it('rejects missing type-specific fields', async () => {
     const typeData = { hotWorkType: 'WELDING' };
@@ -532,19 +538,121 @@ describe('suspension, expiry and closure', () => {
     expect(audit?.actorId).toBeNull();
   });
 
-  it('closes and verifies a permit', async () => {
-    const permitId = await advanceToApproved();
-    await activate(permitId);
+  it('rejects empty completion notes when closing work', async () => {
+    const permitId = await activePermit();
 
-    const closed = await post(`/${permitId}/close`, tokens.requester, {
-      comment: 'Work complete',
+    const response = await post(`/${permitId}/close`, tokens.requester, {
+      completionNotes: '   ',
     });
-    expect(closed.body.status).toBe('CLOSED');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Completion notes are required');
+
+    const permit = await prisma.permit.findUniqueOrThrow({ where: { id: permitId } });
+    expect(permit.status).toBe('ACTIVE');
+    expect(permit.completionNotes).toBeNull();
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { permitId, action: 'PERMIT_CLOSED' },
+    });
+    expect(audit).toBeNull();
+  });
+
+  it('stores completion notes on the permit and in audit history', async () => {
+    const permitId = await activePermit();
+    const completionNotes = 'Pump bearing replaced; no hot work remaining';
+
+    const response = await post(`/${permitId}/close`, tokens.requester, {
+      completionNotes: `  ${completionNotes}  `,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'CLOSED',
+      completionNotes,
+      verificationAreaClean: null,
+      verifiedById: null,
+    });
+
+    const permit = await prisma.permit.findUniqueOrThrow({ where: { id: permitId } });
+    expect(permit.completionNotes).toBe(completionNotes);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { permitId, action: 'PERMIT_CLOSED' },
+    });
+    expect(audit.comment).toBe(completionNotes);
+    expect(audit.actorId).toBe(users.requester.id);
+  });
+
+  it('prevents an unauthorized requester from closing the permit', async () => {
+    const permitId = await activePermit();
+
+    const response = await post(`/${permitId}/close`, tokens.otherRequester, {
+      completionNotes: 'Work complete',
+    });
+
+    expect(response.status).toBe(403);
+
+    const permit = await prisma.permit.findUniqueOrThrow({ where: { id: permitId } });
+    expect(permit.status).toBe('ACTIVE');
+  });
+
+  it('requires area clean confirmation and records successful verification', async () => {
+    const permitId = await activePermit();
+    const closed = await post(`/${permitId}/close`, tokens.requester, {
+      completionNotes: 'Work complete and tools removed',
+    });
+    expect(closed.status).toBe(200);
+
+    const rejected = await post(`/${permitId}/verify`, tokens.safety, {
+      areaClean: false,
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toContain('clean and safe');
 
     const verified = await post(`/${permitId}/verify`, tokens.safety, {
-      comment: 'Site inspected',
+      areaClean: true,
+      comment: 'Area inspected and cleared',
     });
-    expect(verified.body.status).toBe('CLOSED_VERIFIED');
+
+    expect(verified.status).toBe(200);
+    expect(verified.body).toMatchObject({
+      status: 'CLOSED_VERIFIED',
+      completionNotes: 'Work complete and tools removed',
+      verificationAreaClean: true,
+      verificationComment: 'Area inspected and cleared',
+      verifiedById: users.safety.id,
+    });
+
+    const permit = await prisma.permit.findUniqueOrThrow({ where: { id: permitId } });
+    expect(permit.status).toBe('CLOSED_VERIFIED');
+    expect(permit.verificationAreaClean).toBe(true);
+    expect(permit.verifiedAt).not.toBeNull();
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { permitId, action: 'PERMIT_VERIFIED' },
+    });
+    expect(audit.actorId).toBe(users.safety.id);
+    expect(audit.comment).toContain('clean and safe');
+    expect(audit.comment).toContain('Area inspected and cleared');
+  });
+
+  it('prevents the requester from performing safety verification', async () => {
+    const permitId = await activePermit();
+    const closed = await post(`/${permitId}/close`, tokens.requester, {
+      completionNotes: 'Work complete',
+    });
+    expect(closed.status).toBe(200);
+
+    const response = await post(`/${permitId}/verify`, tokens.requester, {
+      areaClean: true,
+    });
+
+    expect(response.status).toBe(403);
+
+    const permit = await prisma.permit.findUniqueOrThrow({ where: { id: permitId } });
+    expect(permit.status).toBe('CLOSED');
+    expect(permit.verificationAreaClean).toBeNull();
   });
 
   it('cancels non-terminal permits and blocks later transitions', async () => {

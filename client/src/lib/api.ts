@@ -1,6 +1,7 @@
 import type {
   ActionResponse,
   ActivationResponse,
+  CloseResponse,
   LoginResponse,
   MeResponse,
   Permit,
@@ -9,6 +10,7 @@ import type {
   PermitPayload,
   PermitQuery,
   ReasonResponse,
+  VerifyResponse,
   WorkLog,
   WorkLogResponse,
 } from '../types/api';
@@ -120,9 +122,9 @@ export const api = {
     request<Permit>(`/permits/${encodeURIComponent(id)}/suspend`, body, 'POST'),
   resumePermit: (id: string, body: ActionResponse = {}) =>
     request<Permit>(`/permits/${encodeURIComponent(id)}/resume`, body, 'POST'),
-  closePermit: (id: string, body: ActionResponse = {}) =>
+  closePermit: (id: string, body: CloseResponse) =>
     request<Permit>(`/permits/${encodeURIComponent(id)}/close`, body, 'POST'),
-  verifyPermit: (id: string, body: ActionResponse = {}) =>
+  verifyPermit: (id: string, body: VerifyResponse) =>
     request<Permit>(`/permits/${encodeURIComponent(id)}/verify`, body, 'POST'),
   cancelPermit: (id: string, body: ReasonResponse) =>
     request<Permit>(`/permits/${encodeURIComponent(id)}/cancel`, body, 'POST'),

@@ -133,6 +133,11 @@ export interface Permit {
   status: PermitStatus;
   typeData: PermitTypeData;
   validUntil: string | null;
+  completionNotes: string | null;
+  verificationAreaClean: boolean | null;
+  verificationComment: string | null;
+  verifiedById: string | null;
+  verifiedAt: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -140,6 +145,7 @@ export interface Permit {
   plant: Reference;
   area: Reference;
   equipment: EquipmentReference | null;
+  verifiedBy: Pick<PublicUser, 'id' | 'name' | 'email' | 'role'> | null;
   approvals: Approval[];
   _count: { workLogs: number };
 }
@@ -210,6 +216,15 @@ export interface MeResponse {
 }
 
 export interface ActionResponse {
+  comment?: string;
+}
+
+export interface CloseResponse {
+  completionNotes: string;
+}
+
+export interface VerifyResponse {
+  areaClean: true;
   comment?: string;
 }
 

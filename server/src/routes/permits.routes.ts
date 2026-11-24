@@ -25,10 +25,12 @@ import {
 } from '../modules/permits/permit.service';
 import {
   activationSchema,
+  closeSchema,
   createPermitSchema,
   decisionSchema,
   listPermitsSchema,
   rejectionSchema,
+  verificationSchema,
   workLogSchema,
 } from '../modules/permits/permit.validation';
 import { asyncHandler } from '../utils/async-handler';
@@ -150,8 +152,10 @@ permitsRouter.post(
   '/:id/close',
   requirePermission('permit:close'),
   asyncHandler(async (req, res) => {
-    const input = parse(decisionSchema, req.body);
-    res.status(200).json(await closePermit(String(req.params.id), req.authUser!, input.comment));
+    const input = parse(closeSchema, req.body);
+    res
+      .status(200)
+      .json(await closePermit(String(req.params.id), req.authUser!, input.completionNotes));
   }),
 );
 
@@ -159,8 +163,8 @@ permitsRouter.post(
   '/:id/verify',
   requirePermission('permit:verify'),
   asyncHandler(async (req, res) => {
-    const input = parse(decisionSchema, req.body);
-    res.status(200).json(await verifyPermit(String(req.params.id), req.authUser!, input.comment));
+    const input = parse(verificationSchema, req.body);
+    res.status(200).json(await verifyPermit(String(req.params.id), req.authUser!, input));
   }),
 );
 
