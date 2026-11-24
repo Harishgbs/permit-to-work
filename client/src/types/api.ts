@@ -184,6 +184,18 @@ export interface WorkLog {
   createdAt: string;
 }
 
+export interface PermitAuditEntry {
+  id: string;
+  permitId: string;
+  action: string;
+  actor: Pick<PublicUser, 'id' | 'name' | 'email'> | null;
+  systemAction: boolean;
+  fromValue: string | null;
+  toValue: string | null;
+  comment: string | null;
+  timestamp: string;
+}
+
 export interface LoginResponse {
   token: string;
   user: PublicUser;

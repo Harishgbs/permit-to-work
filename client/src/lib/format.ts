@@ -1,4 +1,4 @@
-import type { PermitStatus, PermitType, Role } from '../types/api';
+import type { PermitAuditEntry, PermitStatus, PermitType, Role } from '../types/api';
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
@@ -57,4 +57,47 @@ export function getInitials(name: string): string {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+const auditActionLabels: Record<string, string> = {
+  PERMIT_CREATED: 'Permit created',
+  PERMIT_UPDATED: 'Permit details updated',
+  PERMIT_SUBMITTED: 'Submitted for approval',
+  APPROVAL_APPROVED: 'Approval step approved',
+  APPROVAL_REJECTED: 'Approval step rejected',
+  PERMIT_APPROVED: 'Permit approved',
+  PERMIT_REJECTED: 'Permit rejected',
+  PERMIT_ACTIVATED: 'Permit activated',
+  PERMIT_SUSPENDED: 'Permit suspended',
+  PERMIT_RESUMED: 'Permit resumed',
+  PERMIT_CLOSED: 'Work closed',
+  PERMIT_VERIFIED: 'Closeout verified',
+  PERMIT_CANCELLED: 'Permit cancelled',
+  PERMIT_EXPIRED: 'Permit expired',
+  WORK_LOG_ADDED: 'Work log added',
+};
+
+function humanizeToken(value: string): string {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+export function formatAuditAction(action: string): string {
+  return auditActionLabels[action] ?? humanizeToken(action);
+}
+
+export function formatAuditValue(value: string | null | undefined): string {
+  return value ? humanizeToken(value) : '—';
+}
+
+export function formatAuditActor(
+  entry: Pick<PermitAuditEntry, 'actor' | 'systemAction'>,
+): string {
+  if (entry.systemAction) return 'System';
+  if (!entry.actor) return 'Unknown user';
+
+  return entry.actor.name || entry.actor.email;
 }

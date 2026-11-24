@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import request from 'supertest';
@@ -489,5 +490,88 @@ describe('authorization and audit', () => {
         audit.id,
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('permit audit history', () => {
+  it('returns audit records in chronological order with actor details', async () => {
+    const permit = await createDraft();
+    await createDraft();
+    await post(`/${permit.id}/submit`, tokens.requester);
+
+    const response = await get(`/${permit.id}/audit`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(2);
+    expect(response.body.map((entry: { action: string }) => entry.action)).toEqual([
+      'PERMIT_CREATED',
+      'PERMIT_SUBMITTED',
+    ]);
+    expect(response.body.every((entry: { permitId: string }) => entry.permitId === permit.id)).toBe(
+      true,
+    );
+    expect(response.body[0].actor).toMatchObject({
+      name: 'Test requester',
+      email: emailFor('requester'),
+    });
+    expect(response.body[1]).toMatchObject({
+      fromValue: 'DRAFT',
+      toValue: 'PENDING_APPROVAL',
+      systemAction: false,
+    });
+
+    const timestamps = response.body.map((entry: { timestamp: string }) =>
+      new Date(entry.timestamp).getTime(),
+    );
+    expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
+  });
+
+  it('returns an empty history when no audit records exist', async () => {
+    const permit = await prisma.permit.create({
+      data: {
+        permitNumber: `PTW-TEST-${unique.slice(0, 8)}-EMPTY`,
+        type: 'HOT_WORK',
+        requesterId: users.requester.id,
+        contractorTeam: 'Test Contractors',
+        workDescription: `Empty audit history ${unique}`,
+        plantId,
+        areaId: areaAId,
+        equipmentId: equipmentAId,
+        workLocation: 'Maintenance Bay A',
+        plannedStartAt: new Date(Date.now() - 60_000),
+        plannedEndAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        identifiedHazards: 'Sparks and hot surfaces',
+        requiredPpe: 'Gloves and goggles',
+        precautions: 'Fire watch present',
+        typeData: validHotWorkInput().typeData as Prisma.InputJsonValue,
+      },
+    });
+
+    const response = await get(`/${permit.id}/audit`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it('requires authentication', async () => {
+    const permit = await createDraft();
+
+    const response = await request(createApp()).get(`/api/permits/${permit.id}/audit`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects area owners from other areas', async () => {
+    const permit = await createDraft();
+
+    const response = await get(`/${permit.id}/audit`, tokens.ownerB);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown permit', async () => {
+    const response = await get(`/${randomUUID()}/audit`, tokens.admin);
+
+    expect(response.status).toBe(404);
   });
 });

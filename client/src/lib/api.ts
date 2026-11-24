@@ -4,6 +4,7 @@ import type {
   LoginResponse,
   MeResponse,
   Permit,
+  PermitAuditEntry,
   PermitListResponse,
   PermitPayload,
   PermitQuery,
@@ -102,6 +103,8 @@ export const api = {
   listPermits: (query: PermitQuery = {}) =>
     request<PermitListResponse>(`/permits${buildQuery(query)}`),
   getPermit: (id: string) => request<Permit>(`/permits/${encodeURIComponent(id)}`),
+  getPermitAudit: (id: string) =>
+    request<PermitAuditEntry[]>(`/permits/${encodeURIComponent(id)}/audit`),
   createPermit: (payload: PermitPayload) => request<Permit>('/permits', payload, 'POST'),
   updatePermit: (id: string, payload: PermitPayload) =>
     request<Permit>(`/permits/${encodeURIComponent(id)}`, payload, 'PATCH'),

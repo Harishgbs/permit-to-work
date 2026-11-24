@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   ClipboardCheck,
+  History,
   Pencil,
   Play,
   Plus,
@@ -21,7 +22,14 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import { useToast } from '../../components/ui/ToastProvider';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { api } from '../../lib/api';
-import { formatDateTime, formatType, toDateTimeInputValue } from '../../lib/format';
+import {
+  formatAuditAction,
+  formatAuditActor,
+  formatAuditValue,
+  formatDateTime,
+  formatType,
+  toDateTimeInputValue,
+} from '../../lib/format';
 import {
   canDecideApproval,
   canEditDraft,
@@ -53,6 +61,12 @@ export default function PermitDetailPage() {
   const { user } = useAuth();
   const { notify } = useToast();
   const { data, error, isLoading, reload } = useAsyncData(() => api.getPermit(id), [id]);
+  const {
+    data: audit,
+    error: auditError,
+    isLoading: auditIsLoading,
+    reload: reloadAudit,
+  } = useAsyncData(() => api.getPermitAudit(id), [id]);
   const [action, setAction] = useState<ActionKind | null>(null);
   const [note, setNote] = useState('');
   const [validUntil, setValidUntil] = useState(toDateTimeInputValue(new Date().toISOString()));
@@ -128,6 +142,7 @@ export default function PermitDetailPage() {
       }
       setAction(null);
       reload();
+      reloadAudit();
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'Unable to perform action');
     } finally {
@@ -141,6 +156,7 @@ export default function PermitDetailPage() {
       await api.submitPermit(id);
       notify(`${data.permitNumber} submitted for approval.`);
       reload();
+      reloadAudit();
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : 'Unable to submit permit', 'error');
     } finally {
@@ -336,6 +352,53 @@ export default function PermitDetailPage() {
       </Card>
 
       <Card
+        title="Audit timeline"
+        description="Chronological record of permit activity, oldest first."
+      >
+        {auditError ? (
+          <ErrorState message={auditError} onRetry={reloadAudit} />
+        ) : auditIsLoading ? (
+          <p className="py-12 text-center text-sm text-slate-500">Loading audit history…</p>
+        ) : !audit?.length ? (
+          <p className="py-12 text-center text-sm text-slate-500">
+            No audit history recorded for this permit.
+          </p>
+        ) : (
+          <ol className="space-y-4">
+            {audit.map((entry) => (
+              <li key={entry.id} className="flex gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                  <History className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {formatAuditAction(entry.action)}
+                    </p>
+                    <Badge tone={auditTone(entry.toValue)}>{formatAuditValue(entry.toValue)}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatDateTime(entry.timestamp)} · {formatAuditActor(entry)}
+                  </p>
+                  {(entry.fromValue || entry.toValue) && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {entry.fromValue ? formatAuditValue(entry.fromValue) : 'Start'} →{' '}
+                      {formatAuditValue(entry.toValue)}
+                    </p>
+                  )}
+                  {entry.comment && (
+                    <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {entry.comment}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Card>
+
+      <Card
         title="Work log"
         description={`${data._count.workLogs} entr${data._count.workLogs === 1 ? 'y' : 'ies'} recorded.`}
         actions={
@@ -424,6 +487,26 @@ export default function PermitDetailPage() {
       </Modal>
     </div>
   );
+}
+
+function auditTone(value: string | null): 'slate' | 'teal' | 'amber' | 'green' | 'red' | 'blue' {
+  switch (value) {
+    case 'APPROVED':
+    case 'ACTIVE':
+    case 'CLOSED_VERIFIED':
+      return 'green';
+    case 'REJECTED':
+    case 'SUSPENDED':
+    case 'EXPIRED':
+    case 'CANCELLED':
+      return 'red';
+    case 'DRAFT':
+    case 'PENDING_APPROVAL':
+    case 'CLOSED':
+      return 'amber';
+    default:
+      return 'blue';
+  }
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

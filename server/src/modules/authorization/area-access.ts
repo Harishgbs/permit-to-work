@@ -1,4 +1,5 @@
 import { prisma } from '../../config/prisma';
+import { HttpError } from '../../utils/http-error';
 
 export async function canAccessArea(
   user: { role: string; areaId: string | null },
@@ -24,4 +25,14 @@ export async function findPermitAreaId(permitId: string): Promise<string | null>
   });
 
   return permit?.areaId ?? null;
+}
+
+export async function findPermitAreaIdOrThrow(permitId: string): Promise<string> {
+  const areaId = await findPermitAreaId(permitId);
+
+  if (!areaId) {
+    throw new HttpError(404, 'Permit not found');
+  }
+
+  return areaId;
 }

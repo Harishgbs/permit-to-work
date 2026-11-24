@@ -109,11 +109,10 @@ The Vite dev server proxies `/api` to `http://localhost:5001`, so the browser ca
 
 The frontend stores the JWT in `localStorage` and sends it as a bearer token on every API request. This keeps the demo simple but is vulnerable to XSS; production should prefer an HttpOnly, SameSite cookie with CSRF protection and refresh-token rotation.
 
-Navigation and action buttons are role-aware, but the backend remains the authority for authorization. The UI intentionally does not expose fake admin CRUD or audit screens.
+Navigation and action buttons are role-aware, but the backend remains the authority for authorization. The UI intentionally does not expose fake admin CRUD screens. Audit history is read-only and sourced from recorded backend events.
 
 Current API limitations reflected in the UI:
 
-- There is no audit-log read endpoint, so a full audit timeline is not shown.
 - There are no plant/area/equipment reference endpoints; the permit form suggests IDs derived from existing permits and still accepts valid IDs directly.
 - There is no work-log list endpoint; the detail page shows the live work-log count from `GET /api/permits/:id` and accepts new entries while a permit is active.
 
@@ -125,6 +124,7 @@ All permit endpoints require `Authorization: Bearer <token>`. The requester is d
 POST   /api/permits                     create a draft
 GET    /api/permits                     list permits with page/pageSize/status/type/plantId/areaId/search filters
 GET    /api/permits/:id                 get one permit
+GET    /api/permits/:id/audit           get chronological audit history for one permit
 PATCH  /api/permits/:id                 replace draft details
 POST   /api/permits/:id/submit          submit for approval
 POST   /api/permits/:id/approve         approve your role's pending step

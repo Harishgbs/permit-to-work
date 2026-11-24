@@ -5,7 +5,12 @@ import { HttpError } from '../../utils/http-error';
 import { writeAudit } from './audit';
 import { assertTransition } from './state-machine';
 import type { CreatePermitInput, ListPermitsInput } from './permit.validation';
-import { permitInclude, type PermitActor, type PermitWithRelations } from './permit.types';
+import {
+  permitInclude,
+  type PermitActor,
+  type PermitAuditEntry,
+  type PermitWithRelations,
+} from './permit.types';
 
 type Transaction = Prisma.TransactionClient;
 
@@ -241,6 +246,21 @@ export async function listPermits(input: ListPermitsInput, actor: PermitActor) {
       totalPages: Math.ceil(total / input.pageSize),
     },
   };
+}
+
+export async function listPermitAudit(id: string): Promise<PermitAuditEntry[]> {
+  await findPermitOrThrow(id);
+
+  const entries = await prisma.auditLog.findMany({
+    where: { permitId: id },
+    include: { actor: { select: { id: true, name: true, email: true } } },
+    orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
+  });
+
+  return entries.map(({ timestamp, ...entry }) => ({
+    ...entry,
+    timestamp: timestamp.toISOString(),
+  }));
 }
 
 export async function addWorkLog(id: string, note: string, actor: PermitActor) {

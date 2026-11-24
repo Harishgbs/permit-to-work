@@ -35,12 +35,10 @@ export default function ActivityPage() {
         <div className="flex items-start gap-3">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
           <div>
-            <p className="font-semibold">Read-only limitation</p>
+            <p className="font-semibold">Audit history is available per permit</p>
             <p className="mt-1 leading-relaxed text-blue-800">
-              The current API does not expose audit-log entries or a work-log list endpoint. This
-              screen shows real work-log counts from permit responses only. Full audit history is
-              stored in the backend audit table and can be added to the UI once a read endpoint is
-              implemented.
+              Open any permit to view its chronological audit timeline. There is still no work-log
+              list endpoint, so this screen shows real work-log counts from permit responses only.
             </p>
           </div>
         </div>

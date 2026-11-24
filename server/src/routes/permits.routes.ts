@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireAreaOwnership } from '../middleware/area-access.middleware';
 import { requirePermission } from '../middleware/authorize.middleware';
-import { findPermitAreaId } from '../modules/authorization/area-access';
+import { findPermitAreaId, findPermitAreaIdOrThrow } from '../modules/authorization/area-access';
 import {
   activatePermit,
   approvePermit,
@@ -18,6 +18,7 @@ import {
   addWorkLog,
   createPermit,
   findPermitWithRelationsOrThrow,
+  listPermitAudit,
   listPermits,
   submitPermit,
   updatePermit,
@@ -71,6 +72,15 @@ permitsRouter.get(
   requireAreaOwnership((req) => findPermitAreaId(String(req.params.id))),
   asyncHandler(async (req, res) => {
     res.status(200).json(await findPermitWithRelationsOrThrow(String(req.params.id)));
+  }),
+);
+
+permitsRouter.get(
+  '/:id/audit',
+  requirePermission('permit:read'),
+  requireAreaOwnership((req) => findPermitAreaIdOrThrow(String(req.params.id))),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(await listPermitAudit(String(req.params.id)));
   }),
 );
 
