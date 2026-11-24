@@ -524,6 +524,14 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatList(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+
+  return value == null ? '' : String(value);
+}
+
 function TypeDataDisplay({
   typeData,
   type,
@@ -589,9 +597,10 @@ function TypeDataDisplay({
     <dl className="grid gap-4 sm:grid-cols-2">
       <Detail label="Equipment tag" value={data.equipmentTag} />
       <Detail label="Voltage" value={String(data.voltage)} />
-      <Detail label="Isolation points" value={String(data.isolationPoints)} />
-      <Detail label="Lock/tag numbers" value={data.lockTagNumbers.join(', ')} />
-      <Detail label="Earthing" value={data.earthing ? 'Yes' : 'No'} />
+      <Detail label="Isolation points" value={formatList(data.isolationPoints)} />
+      <Detail label="Lock numbers" value={formatList(data.lockNumbers)} />
+      <Detail label="Tag numbers" value={formatList(data.tagNumbers)} />
+      <Detail label="Earthing" value={data.earthingApplied ? 'Yes' : 'No'} />
       <Detail label="Tested dead" value={data.testedDead ? 'Confirmed' : 'Not confirmed'} />
       <Detail label="Tested by" value={data.testedDeadBy} />
     </dl>

@@ -16,10 +16,12 @@ import {
   type PermitFormValues,
 } from '../../lib/permitPayload';
 import type {
+  AccessMethod,
   ConfinedSpaceData,
   ElectricalLotoData,
   EquipmentReference,
   HotWorkData,
+  HotWorkMethod,
   Permit,
   PermitPayload,
   PermitType,
@@ -44,7 +46,7 @@ interface ReferenceData {
 }
 
 interface TypeDataForm {
-  hotWorkType: HotWorkData['hotWorkType'];
+  hotWorkType: HotWorkMethod;
   fireWatch: boolean;
   extinguisherType: string;
   combustiblesRadius: string;
@@ -63,15 +65,16 @@ interface TypeDataForm {
   ventilation: string;
   entryExitLog: string;
   heightMetres: string;
-  accessMethod: string;
+  accessMethod: AccessMethod;
   fallArrest: boolean;
   anchorCheck: string;
   barricading: boolean;
   equipmentTag: string;
   voltage: string;
   isolationPoints: string;
-  lockTagNumbers: string;
-  earthing: boolean;
+  lockNumbers: string;
+  tagNumbers: string;
+  earthingApplied: boolean;
   testedDeadBy: string;
 }
 
@@ -86,6 +89,21 @@ const permitTypes: PermitType[] = [
   'WORKING_AT_HEIGHT',
   'ELECTRICAL_LOTO',
 ];
+
+const hotWorkMethods: HotWorkMethod[] = ['WELDING', 'GRINDING', 'CUTTING', 'SOLDERING'];
+const hotWorkMethodLabels: Record<HotWorkMethod, string> = {
+  WELDING: 'Welding',
+  GRINDING: 'Grinding',
+  CUTTING: 'Cutting',
+  SOLDERING: 'Soldering',
+};
+const accessMethods: AccessMethod[] = ['SCAFFOLD', 'LADDER', 'MEWP', 'ROPE'];
+const accessMethodLabels: Record<AccessMethod, string> = {
+  SCAFFOLD: 'Scaffold',
+  LADDER: 'Ladder',
+  MEWP: 'MEWP',
+  ROPE: 'Rope',
+};
 
 function emptyTypeData(): TypeDataForm {
   const now = toDateTimeInputValue(new Date().toISOString());
@@ -110,17 +128,26 @@ function emptyTypeData(): TypeDataForm {
     ventilation: '',
     entryExitLog: '',
     heightMetres: '',
-    accessMethod: '',
+    accessMethod: 'SCAFFOLD',
     fallArrest: false,
     anchorCheck: '',
     barricading: false,
     equipmentTag: '',
     voltage: '',
     isolationPoints: '',
-    lockTagNumbers: '',
-    earthing: false,
+    lockNumbers: '',
+    tagNumbers: '',
+    earthingApplied: false,
     testedDeadBy: '',
   };
+}
+
+function listToInput(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+
+  return value == null ? '' : String(value);
 }
 
 function typeDataFromPermit(permit: Permit | null | undefined): TypeDataForm {
@@ -176,9 +203,13 @@ function typeDataFromPermit(permit: Permit | null | undefined): TypeDataForm {
     ...base,
     equipmentTag: data.equipmentTag,
     voltage: String(data.voltage),
-    isolationPoints: String(data.isolationPoints),
-    lockTagNumbers: data.lockTagNumbers.join(', '),
-    earthing: data.earthing,
+    isolationPoints: listToInput(data.isolationPoints),
+    lockNumbers: listToInput(data.lockNumbers),
+    tagNumbers: listToInput(data.tagNumbers),
+    earthingApplied:
+      (data as { earthingApplied?: boolean }).earthingApplied ??
+      (data as { earthing?: boolean }).earthing ??
+      false,
     testedDeadBy: data.testedDeadBy,
   };
 }
@@ -221,6 +252,35 @@ function requiredNumber(value: string, label: string): number {
     throw new Error(`${label} must be a valid number.`);
   }
   return parsed;
+}
+
+function requiredHotWorkMethod(value: HotWorkMethod): HotWorkMethod {
+  if (!hotWorkMethods.includes(value)) {
+    throw new Error('Hot work method is required.');
+  }
+
+  return value;
+}
+
+function requiredAccessMethod(value: AccessMethod): AccessMethod {
+  if (!accessMethods.includes(value)) {
+    throw new Error('Access method is required.');
+  }
+
+  return value;
+}
+
+function requiredList(value: string, label: string): string[] {
+  const values = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (!values.length) {
+    throw new Error(`At least one ${label} is required.`);
+  }
+
+  return values;
 }
 
 export default function PermitForm({
@@ -276,7 +336,7 @@ export default function PermitForm({
   const buildTypeData = (): PermitTypeData => {
     if (type === 'HOT_WORK') {
       return {
-        hotWorkType: typeData.hotWorkType,
+        hotWorkType: requiredHotWorkMethod(typeData.hotWorkType),
         fireWatch: typeData.fireWatch,
         extinguisherType: requiredText(typeData.extinguisherType, 'Fire extinguisher type'),
         combustiblesClearanceRadiusMetres: requiredNumber(
@@ -312,28 +372,20 @@ export default function PermitForm({
     if (type === 'WORKING_AT_HEIGHT') {
       return {
         heightMetres: requiredNumber(typeData.heightMetres, 'Height'),
-        accessMethod: requiredText(typeData.accessMethod, 'Access method'),
+        accessMethod: requiredAccessMethod(typeData.accessMethod),
         fallArrest: typeData.fallArrest,
         anchorCheck: requiredText(typeData.anchorCheck, 'Anchor check'),
         barricading: typeData.barricading,
       };
     }
 
-    const lockTagNumbers = typeData.lockTagNumbers
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    if (!lockTagNumbers.length) {
-      throw new Error('At least one lock/tag number is required.');
-    }
-
     return {
       equipmentTag: requiredText(typeData.equipmentTag, 'Equipment tag'),
       voltage: requiredNumber(typeData.voltage, 'Voltage'),
-      isolationPoints: requiredNumber(typeData.isolationPoints, 'Isolation points'),
-      lockTagNumbers,
-      earthing: typeData.earthing,
+      isolationPoints: requiredList(typeData.isolationPoints, 'isolation point'),
+      lockNumbers: requiredList(typeData.lockNumbers, 'lock number'),
+      tagNumbers: requiredList(typeData.tagNumbers, 'tag number'),
+      earthingApplied: typeData.earthingApplied,
       testedDead: true,
       testedDeadBy: requiredText(typeData.testedDeadBy, 'Tested dead by'),
     };
@@ -558,12 +610,12 @@ export default function PermitForm({
                 <select
                   id="hot-work-type"
                   value={typeData.hotWorkType}
-                  onChange={(event) => setTypeField('hotWorkType', event.target.value as HotWorkData['hotWorkType'])}
+                  onChange={(event) => setTypeField('hotWorkType', event.target.value as HotWorkMethod)}
                   className={inputClass}
                 >
-                  {['WELDING', 'GRINDING', 'CUTTING', 'BRAZING', 'OTHER'].map((item) => (
+                  {hotWorkMethods.map((item) => (
                     <option key={item} value={item}>
-                      {item}
+                      {hotWorkMethodLabels[item]}
                     </option>
                   ))}
                 </select>
@@ -730,13 +782,18 @@ export default function PermitForm({
                 />
               </Field>
               <Field id="access-method" label="Access method" required>
-                <input
+                <select
                   id="access-method"
                   value={typeData.accessMethod}
-                  onChange={(event) => setTypeField('accessMethod', event.target.value)}
+                  onChange={(event) => setTypeField('accessMethod', event.target.value as AccessMethod)}
                   className={inputClass}
-                  placeholder="e.g. MEWP, scaffold, ladder"
-                />
+                >
+                  {accessMethods.map((item) => (
+                    <option key={item} value={item}>
+                      {accessMethodLabels[item]}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <div className="flex items-end">
                 <label className="flex items-center gap-2 pb-2 text-sm font-medium text-slate-700">
@@ -794,24 +851,31 @@ export default function PermitForm({
                   className={inputClass}
                 />
               </Field>
-              <Field id="isolation-points" label="Isolation points" required>
+              <Field id="isolation-points" label="Isolation points" required hint="Separate multiple points with commas.">
                 <input
                   id="isolation-points"
-                  type="number"
-                  min="1"
-                  step="1"
                   value={typeData.isolationPoints}
                   onChange={(event) => setTypeField('isolationPoints', event.target.value)}
                   className={inputClass}
+                  placeholder="Main breaker, feed isolator"
                 />
               </Field>
-              <Field id="lock-tags" label="Lock/tag numbers" required hint="Separate multiple values with commas.">
+              <Field id="lock-numbers" label="Lock numbers" required hint="Separate multiple values with commas.">
                 <input
-                  id="lock-tags"
-                  value={typeData.lockTagNumbers}
-                  onChange={(event) => setTypeField('lockTagNumbers', event.target.value)}
+                  id="lock-numbers"
+                  value={typeData.lockNumbers}
+                  onChange={(event) => setTypeField('lockNumbers', event.target.value)}
                   className={inputClass}
                   placeholder="LT-001, LT-002"
+                />
+              </Field>
+              <Field id="tag-numbers" label="Tag numbers" required hint="Separate multiple values with commas.">
+                <input
+                  id="tag-numbers"
+                  value={typeData.tagNumbers}
+                  onChange={(event) => setTypeField('tagNumbers', event.target.value)}
+                  className={inputClass}
+                  placeholder="TG-001, TG-002"
                 />
               </Field>
               <Field id="tested-by" label="Tested dead by" required>
@@ -826,8 +890,8 @@ export default function PermitForm({
                 <label className="flex items-center gap-2 pb-2 text-sm font-medium text-slate-700">
                   <input
                     type="checkbox"
-                    checked={typeData.earthing}
-                    onChange={(event) => setTypeField('earthing', event.target.checked)}
+                    checked={typeData.earthingApplied}
+                    onChange={(event) => setTypeField('earthingApplied', event.target.checked)}
                     className={checkboxClass}
                   />
                   Earthing applied
@@ -881,7 +945,7 @@ export default function PermitForm({
                 <Badge tone="teal">{type.replaceAll('_', ' ')}</Badge>
                 {typeData.fireWatch && <Badge tone="amber">Fire watch</Badge>}
                 {typeData.fallArrest && <Badge tone="amber">Fall arrest</Badge>}
-                {typeData.earthing && <Badge tone="amber">Earthing</Badge>}
+                {typeData.earthingApplied && <Badge tone="amber">Earthing</Badge>}
               </dd>
             </div>
           </dl>

@@ -18,7 +18,7 @@ const sharedPermitFields = {
 };
 
 const hotWorkSchema = z.object({
-  hotWorkType: z.enum(['WELDING', 'GRINDING', 'CUTTING', 'BRAZING', 'OTHER']),
+  hotWorkType: z.enum(['WELDING', 'GRINDING', 'CUTTING', 'SOLDERING']),
   fireWatch: z.boolean(),
   extinguisherType: requiredText,
   combustiblesClearanceRadiusMetres: z.number().positive(),
@@ -47,7 +47,7 @@ const confinedSpaceSchema = z.object({
 
 const workingAtHeightSchema = z.object({
   heightMetres: z.number().positive(),
-  accessMethod: requiredText,
+  accessMethod: z.enum(['SCAFFOLD', 'LADDER', 'MEWP', 'ROPE']),
   fallArrest: z.boolean(),
   anchorCheck: requiredText,
   barricading: z.boolean(),
@@ -56,9 +56,10 @@ const workingAtHeightSchema = z.object({
 const electricalLotoSchema = z.object({
   equipmentTag: requiredText,
   voltage: z.number().positive(),
-  isolationPoints: z.number().int().positive(),
-  lockTagNumbers: z.array(requiredText).min(1),
-  earthing: z.boolean(),
+  isolationPoints: z.array(requiredText).min(1),
+  lockNumbers: z.array(requiredText).min(1),
+  tagNumbers: z.array(requiredText).min(1),
+  earthingApplied: z.boolean(),
   testedDead: z.literal(true),
   testedDeadBy: requiredText,
 });

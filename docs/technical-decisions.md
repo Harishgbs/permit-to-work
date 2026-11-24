@@ -20,6 +20,8 @@ All permit types share the same lifecycle (draft, approval, active, suspension, 
 
 Trade-off: the database does not validate the shape of each payload. Backend validation uses a Zod discriminated union on `type`, so hot work, confined space, working-at-height and electrical LOTO payloads are checked before any write. A GIN index can be added later if queries need to filter on payload fields. The shared columns remain strongly typed so search and lifecycle logic stay simple.
 
+Permit-type payloads follow the assignment exactly: hot work methods are `WELDING`, `GRINDING`, `CUTTING` and `SOLDERING`; working-at-height access methods are `SCAFFOLD`, `LADDER`, `MEWP` and `ROPE`; electrical LOTO stores separate lists for isolation points, lock numbers and tag numbers. A data migration normalizes legacy JSON without deleting records: known equivalents are converted, ambiguous legacy values are retained with review labels, and unrecognized enum values are left for an operator to reselect.
+
 ## Audit trail
 
 `AuditLog` records the permit, actor, action, previous value, new value, comment and timestamp. A migration adds `BEFORE UPDATE` and `BEFORE DELETE` triggers that reject any modification, making the log append-only even for privileged application code. Corrections must be written as new entries. This is a schema-level guarantee, not just an application convention. Automated expiry writes entries with `systemAction = true` and no actor; API reads can present those as `SYSTEM`.

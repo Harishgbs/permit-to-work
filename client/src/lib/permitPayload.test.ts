@@ -8,7 +8,13 @@ import {
   createPermitSchema,
   updatePermitSchema,
 } from '../../../server/src/modules/permits/permit.validation';
-import type { PermitType, PermitTypeData } from '../types/api';
+import type {
+  ElectricalLotoData,
+  HotWorkData,
+  PermitType,
+  PermitTypeData,
+  WorkingAtHeightData,
+} from '../types/api';
 
 const PLANT_ID = '11111111-1111-4111-8111-111111111111';
 const AREA_ID = '22222222-2222-4222-8222-222222222222';
@@ -68,9 +74,10 @@ function typeDataFor(type: PermitType): PermitTypeData {
       return {
         equipmentTag: 'MCC-7',
         voltage: 415,
-        isolationPoints: 2,
-        lockTagNumbers: ['LT-001', 'LT-002'],
-        earthing: true,
+        isolationPoints: ['Main breaker', 'Feeder isolator'],
+        lockNumbers: ['LT-001', 'LT-002'],
+        tagNumbers: ['TG-001', 'TG-002'],
+        earthingApplied: true,
         testedDead: true,
         testedDeadBy: 'Electrician B',
       };
@@ -144,4 +151,57 @@ describe('permit payload normalization', () => {
       expect(updatePermitSchema.safeParse(payload).success).toBe(true);
     },
   );
+
+  it('accepts the four assignment hot work methods and rejects legacy methods', () => {
+    const hotWorkData = typeDataFor('HOT_WORK') as HotWorkData;
+
+    for (const hotWorkType of ['WELDING', 'GRINDING', 'CUTTING', 'SOLDERING'] as const) {
+      const payload = buildPermitPayload(validForm(), 'HOT_WORK', { ...hotWorkData, hotWorkType });
+      expect(createPermitSchema.safeParse(payload).success).toBe(true);
+    }
+
+    for (const hotWorkType of ['BRAZING', 'OTHER'] as unknown as HotWorkData['hotWorkType'][]) {
+      const payload = buildPermitPayload(validForm(), 'HOT_WORK', { ...hotWorkData, hotWorkType });
+      expect(createPermitSchema.safeParse(payload).success).toBe(false);
+    }
+  });
+
+  it('accepts the four assignment access methods and rejects free text', () => {
+    const heightData = typeDataFor('WORKING_AT_HEIGHT') as WorkingAtHeightData;
+
+    for (const accessMethod of ['SCAFFOLD', 'LADDER', 'MEWP', 'ROPE'] as const) {
+      const payload = buildPermitPayload(validForm(), 'WORKING_AT_HEIGHT', {
+        ...heightData,
+        accessMethod,
+      });
+      expect(createPermitSchema.safeParse(payload).success).toBe(true);
+    }
+
+    const payload = buildPermitPayload(validForm(), 'WORKING_AT_HEIGHT', {
+      ...heightData,
+      accessMethod: 'Rope access' as WorkingAtHeightData['accessMethod'],
+    });
+    expect(createPermitSchema.safeParse(payload).success).toBe(false);
+  });
+
+  it('requires separate isolation point, lock number and tag number lists for LOTO', () => {
+    const lotoData = typeDataFor('ELECTRICAL_LOTO') as ElectricalLotoData;
+
+    expect(
+      createPermitSchema.safeParse(
+        buildPermitPayload(validForm(), 'ELECTRICAL_LOTO', { ...lotoData, tagNumbers: [] }),
+      ).success,
+    ).toBe(false);
+
+    const legacyPayload = buildPermitPayload(validForm(), 'ELECTRICAL_LOTO', {
+      equipmentTag: lotoData.equipmentTag,
+      voltage: lotoData.voltage,
+      isolationPoints: 2,
+      lockTagNumbers: ['LT-001'],
+      earthing: true,
+      testedDead: true,
+      testedDeadBy: lotoData.testedDeadBy,
+    } as unknown as PermitTypeData);
+    expect(createPermitSchema.safeParse(legacyPayload).success).toBe(false);
+  });
 });

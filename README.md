@@ -140,10 +140,12 @@ POST   /api/permits/:id/work-logs       add a work log while active
 
 Shared fields are `contractorTeam`, `workDescription`, `plantId`, `areaId`, `equipmentId`, `workLocation`, `plannedStartAt`, `plannedEndAt`, `identifiedHazards`, `requiredPpe` and `precautions`. `typeData` is validated with a Zod discriminated union:
 
-- `HOT_WORK`: hot work type, fire watch, extinguisher type, combustibles clearance radius, LEL/O2 gas readings and timestamp.
+- `HOT_WORK`: hot work method (`WELDING`, `GRINDING`, `CUTTING` or `SOLDERING`), fire watch, extinguisher type, combustibles clearance radius, LEL/O2 gas readings and timestamp.
 - `CONFINED_SPACE`: space ID, entry point, O2/LEL/H2S/CO readings and timestamp, attendant, rescue plan, ventilation and entry/exit log.
-- `WORKING_AT_HEIGHT`: height, access method, fall arrest, anchor check and barricading.
-- `ELECTRICAL_LOTO`: equipment tag, voltage, isolation points, lock/tag numbers, earthing, tested-dead confirmation and who performed it.
+- `WORKING_AT_HEIGHT`: height, access method (`SCAFFOLD`, `LADDER`, `MEWP` or `ROPE`), fall arrest, anchor check and barricading.
+- `ELECTRICAL_LOTO`: equipment tag, voltage, isolation point list, lock numbers, tag numbers, earthing applied, tested-dead confirmation and who performed it.
+
+A data migration aligns legacy `typeData`: `BRAZING` becomes `SOLDERING`; recognizable access-method text becomes the matching enum; old LOTO counts and combined lock/tag numbers are retained as review-labelled entries because the original records did not distinguish those values. Unrecognized legacy enum values are preserved and must be reselected before the next write.
 
 Example `HOT_WORK` payload:
 

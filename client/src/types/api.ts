@@ -62,8 +62,11 @@ export interface Approval {
   updatedAt: string;
 }
 
+export type HotWorkMethod = 'WELDING' | 'GRINDING' | 'CUTTING' | 'SOLDERING';
+export type AccessMethod = 'SCAFFOLD' | 'LADDER' | 'MEWP' | 'ROPE';
+
 export interface HotWorkData {
-  hotWorkType: 'WELDING' | 'GRINDING' | 'CUTTING' | 'BRAZING' | 'OTHER';
+  hotWorkType: HotWorkMethod;
   fireWatch: boolean;
   extinguisherType: string;
   combustiblesClearanceRadiusMetres: number;
@@ -92,7 +95,7 @@ export interface ConfinedSpaceData {
 
 export interface WorkingAtHeightData {
   heightMetres: number;
-  accessMethod: string;
+  accessMethod: AccessMethod;
   fallArrest: boolean;
   anchorCheck: string;
   barricading: boolean;
@@ -101,9 +104,10 @@ export interface WorkingAtHeightData {
 export interface ElectricalLotoData {
   equipmentTag: string;
   voltage: number;
-  isolationPoints: number;
-  lockTagNumbers: string[];
-  earthing: boolean;
+  isolationPoints: string[];
+  lockNumbers: string[];
+  tagNumbers: string[];
+  earthingApplied: boolean;
   testedDead: true;
   testedDeadBy: string;
 }

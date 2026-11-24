@@ -52,6 +52,37 @@ function validHotWorkInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function validLotoInput(overrides: Record<string, unknown> = {}) {
+  return validHotWorkInput({
+    type: 'ELECTRICAL_LOTO',
+    typeData: {
+      equipmentTag: 'MCC-7',
+      voltage: 415,
+      isolationPoints: ['Main breaker', 'Feeder isolator'],
+      lockNumbers: ['LT-001', 'LT-002'],
+      tagNumbers: ['TG-001', 'TG-002'],
+      earthingApplied: true,
+      testedDead: true,
+      testedDeadBy: 'Electrician B',
+    },
+    ...overrides,
+  });
+}
+
+function validHeightInput(overrides: Record<string, unknown> = {}) {
+  return validHotWorkInput({
+    type: 'WORKING_AT_HEIGHT',
+    typeData: {
+      heightMetres: 6,
+      accessMethod: 'ROPE',
+      fallArrest: true,
+      anchorCheck: 'Certified anchor',
+      barricading: true,
+    },
+    ...overrides,
+  });
+}
+
 const post = (path: string, token: string, body: unknown = {}) =>
   request(createApp())
     .post(`/api/permits${path}`)
@@ -153,6 +184,94 @@ describe('permit validation and creation', () => {
     const response = await post('', tokens.requester, validHotWorkInput({ typeData }));
 
     expect(response.status).toBe(400);
+  });
+
+  it('accepts the assignment hot work methods and rejects legacy methods', async () => {
+    const baseTypeData = validHotWorkInput().typeData as Record<string, unknown>;
+
+    for (const hotWorkType of ['WELDING', 'GRINDING', 'CUTTING', 'SOLDERING']) {
+      const response = await post(
+        '',
+        tokens.requester,
+        validHotWorkInput({ typeData: { ...baseTypeData, hotWorkType } }),
+      );
+      expect(response.status).toBe(201);
+    }
+
+    for (const hotWorkType of ['BRAZING', 'OTHER']) {
+      const response = await post(
+        '',
+        tokens.requester,
+        validHotWorkInput({ typeData: { ...baseTypeData, hotWorkType } }),
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it('accepts the assignment access methods and rejects free text', async () => {
+    const baseTypeData = validHeightInput().typeData as Record<string, unknown>;
+
+    for (const accessMethod of ['SCAFFOLD', 'LADDER', 'MEWP', 'ROPE']) {
+      const response = await post(
+        '',
+        tokens.requester,
+        validHeightInput({ typeData: { ...baseTypeData, accessMethod } }),
+      );
+      expect(response.status).toBe(201);
+    }
+
+    const response = await post(
+      '',
+      tokens.requester,
+      validHeightInput({ typeData: { ...baseTypeData, accessMethod: 'Rope access' } }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('requires separate isolation point, lock number and tag number lists for LOTO', async () => {
+    const valid = await post('', tokens.requester, validLotoInput());
+    expect(valid.status).toBe(201);
+    expect(valid.body.typeData).toMatchObject({
+      isolationPoints: ['Main breaker', 'Feeder isolator'],
+      lockNumbers: ['LT-001', 'LT-002'],
+      tagNumbers: ['TG-001', 'TG-002'],
+      earthingApplied: true,
+    });
+
+    const missingTags = await post(
+      '',
+      tokens.requester,
+      validLotoInput({
+        typeData: {
+          equipmentTag: 'MCC-7',
+          voltage: 415,
+          isolationPoints: ['Main breaker'],
+          lockNumbers: ['LT-001'],
+          tagNumbers: [],
+          earthingApplied: true,
+          testedDead: true,
+          testedDeadBy: 'Electrician B',
+        },
+      }),
+    );
+    expect(missingTags.status).toBe(400);
+
+    const legacy = await post(
+      '',
+      tokens.requester,
+      validLotoInput({
+        typeData: {
+          equipmentTag: 'MCC-7',
+          voltage: 415,
+          isolationPoints: 2,
+          lockTagNumbers: ['LT-001'],
+          earthing: true,
+          testedDead: true,
+          testedDeadBy: 'Electrician B',
+        },
+      }),
+    );
+    expect(legacy.status).toBe(400);
   });
 
   it('rejects an end time before the start time', async () => {
