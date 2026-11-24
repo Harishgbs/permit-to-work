@@ -2,7 +2,7 @@
 
 A full-stack **Permit to Work (PTW)** module for a Computerized Maintenance Management System (CMMS). The goal is to provide a safety authorization workflow for hazardous maintenance activities such as hot work, confined space entry, working at height, and electrical lockout/tagout.
 
-This repository contains a working development foundation and a backend permit workflow: application shell, REST API, email/password authentication, role and area authorization, PostgreSQL schema with migrations and seed data, permit creation with type-specific validation, a guarded approval/activation/suspension/expiry/closure state machine, work logs and an append-only audit trail.
+This repository implements the full-stack module: React client, Express REST API, PostgreSQL/Prisma schema with migrations and seed data, email/password authentication, role and area authorization, permit creation with type-specific validation, a guarded approval/activation/suspension/expiry/closure state machine, work logs, audit history, dashboard, and automated tests.
 
 ## Domain context
 
@@ -24,8 +24,9 @@ A CMMS manages maintenance work, assets and records. A Permit to Work is a contr
 permit-to-work/
 ├── client/                 React + Vite frontend
 │   └── src/
-│       ├── components/     Shared layout components
-│       └── pages/          Dashboard and placeholders
+│       ├── components/     Shared UI and layout
+│       ├── features/       Auth, dashboard, permits, approvals and audit
+│       └── lib/            API client, filters, permissions and formatting
 ├── server/                 Express + TypeScript API
 │   ├── src/
 │   │   ├── config/         Environment and Prisma client
@@ -48,8 +49,11 @@ permit-to-work/
 
 ## Installation
 
+Clone the repository and install dependencies:
+
 ```bash
-cd ~/dev/permit-to-work
+git clone https://github.com/Harishgbs/permit-to-work.git
+cd permit-to-work
 npm install
 ```
 
@@ -57,6 +61,7 @@ npm install
 
 ```bash
 cp server/.env.example server/.env
+cp client/.env.example client/.env
 ```
 
 Edit `server/.env` and set `DATABASE_URL` to your PostgreSQL connection string. The API port defaults to `5001` in `.env.example` (port 5000 is often used by other local services). Set `JWT_SECRET` to a random string of at least 32 characters (for example `openssl rand -hex 32`) and optionally `JWT_EXPIRES_IN` (default `1h`). `EXPIRY_SCAN_INTERVAL_MS` controls the automatic expiry scan (default `60000`). `.env` is gitignored; never commit real credentials.
@@ -85,7 +90,7 @@ npm run db:seed -w server           # load repeatable demo seed data
 
 The initial migrations create the User, Plant, Area, Equipment, Permit, Approval and AuditLog tables. A second migration adds database triggers that make `AuditLog` append-only. The permit lifecycle migration adds `WorkLog`, role-based approval requirements, permit validity/version fields, nullable system audit actors and a PostgreSQL sequence for permit numbers.
 
-The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses, with approvals where applicable. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates.
+The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses, with approvals where applicable. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates. Deployed environments should use `npm run prisma:migrate:deploy -w server`; only seed a deployment when demo data is intentionally wanted.
 
 **Demo-only credentials** (development and assignment presentation only, never use in production):
 
@@ -103,18 +108,21 @@ npm run dev:client   # frontend at http://localhost:5173
 npm run dev:server   # API at http://localhost:5001
 ```
 
+## Deployed application
+
+- Frontend (Vercel): https://permit-to-work-kappa.vercel.app
+- Backend API (Render): https://permit-to-work.onrender.com/api
+- API health: https://permit-to-work.onrender.com/api/health
+
+The deployed frontend is built with `VITE_API_BASE_URL` set to the Render API base URL.
+
 ### Frontend configuration
 
 The Vite dev server proxies `/api` to `http://localhost:5001`, so the browser calls same-origin URLs and CORS is not needed in development. Set `VITE_API_BASE_URL` before building if the API is hosted elsewhere; it defaults to `/api`.
 
 The frontend stores the JWT in `localStorage` and sends it as a bearer token on every API request. This keeps the demo simple but is vulnerable to XSS; production should prefer an HttpOnly, SameSite cookie with CSRF protection and refresh-token rotation.
 
-Navigation and action buttons are role-aware, but the backend remains the authority for authorization. The UI intentionally does not expose fake admin CRUD screens. Audit history is read-only and sourced from recorded backend events.
-
-Current API limitations reflected in the UI:
-
-- There are no plant/area/equipment reference endpoints; the permit form suggests IDs derived from existing permits and still accepts valid IDs directly.
-- There is no work-log list endpoint; the detail page shows the live work-log count from `GET /api/permits/:id` and accepts new entries while a permit is active.
+Navigation and action buttons are role-aware, but the backend remains the authority for authorization. The UI does not expose placeholder admin CRUD screens; audit history is read-only and sourced from recorded backend events.
 
 ## Permit workflow API
 
@@ -180,9 +188,18 @@ Example `HOT_WORK` payload:
 
 `DRAFT → PENDING_APPROVAL → APPROVED → ACTIVE → CLOSED → CLOSED_VERIFIED`; `ACTIVE ↔ SUSPENDED`; non-terminal states may be cancelled; `PENDING_APPROVAL → REJECTED`; `ACTIVE`/`SUSPENDED → EXPIRED`.
 
-Submission creates two approval requirements: area owner (step 1) and safety officer (step 2). Both must approve before activation. Requesters cannot approve their own permits, Area Owners only approve their assigned area, Safety Officers approve across areas, and administrators have full access. Permit transitions use Prisma transactions and an optimistic `version` guard, so concurrent approvals or transitions cannot silently overwrite each other.
+Submission creates two approval requirements: area owner (step 1) and safety officer (step 2). Both must approve before activation. Requesters cannot approve their own permits, Area Owners only approve their assigned area, Safety Officers approve across areas, and administrators can decide either pending approval role. Permit transitions use Prisma transactions and an optimistic `version` guard, so concurrent approvals or transitions cannot silently overwrite each other.
 
 Activation requires a time at or after `plannedStartAt` and sets `validUntil` from the request or `plannedEndAt`. The API runs an expiry scan at startup and every `EXPIRY_SCAN_INTERVAL_MS`, marking due `ACTIVE`/`SUSPENDED` permits as `EXPIRED` with a system audit entry. Expired permits cannot be reactivated; a new permit is required. Work logs are accepted only while a permit is `ACTIVE`.
+
+## Technical decisions
+
+- PostgreSQL and Prisma were chosen for relational integrity, typed queries, enums and versioned SQL migrations. One shared `Permit` table avoids four duplicate lifecycles; type-specific fields live in `typeData` JSONB and are validated by Zod.
+- Authorization is centralized in a role-to-permission map and server-side middleware. Area Owners are restricted to their assigned area; Safety Officers act across areas; administrators follow the existing permission and approval rules.
+- Lifecycle writes run in transactions with a status-and-version guard to prevent concurrent transitions from silently overwriting each other. Audit entries are append-only at the database level.
+- The JWT is stored in `localStorage` for a simple stateless demo. This is XSS-sensitive; HttpOnly cookies, CSRF protection and refresh-token rotation are future production work.
+- Permit-list date filters match `plannedStartAt`. "My Approvals Pending" matches real pending `Approval` rows and the same eligibility rules used by the decision endpoint, not just permit status.
+- Expiry is handled by an API process scan. A separate scheduler would be needed for expiry while the API is stopped.
 
 ## Verification commands
 
@@ -191,6 +208,8 @@ npm run typecheck    # TypeScript checks for client and server
 npm test             # Vitest + Supertest API tests
 npm run build        # production build of client and server
 ```
+
+Server tests need `DATABASE_URL` pointing to a disposable PostgreSQL database with migrations applied. Integration tests leave append-only audit fixtures in place instead of deleting them.
 
 ## Deployment
 
@@ -238,13 +257,27 @@ Passwords are hashed with bcrypt before storage. Login failures return a generic
 
 Authorization is centralized in reusable middleware: `requireRole(...roles)` and `requirePermission(permission)` are backed by a role-to-permission map that can be extended for permit lifecycle actions. `requireAreaOwnership(resolveAreaId)` resolves the area from a database resource server-side; it does not accept area IDs from request bodies. Area Owners can only act on resources in their assigned area.
 
-### Current limitations
+## Known limitations
 
-- No public registration or admin user management endpoint; user management is deferred.
+- No public registration or admin user-management endpoint.
 - No refresh tokens, password reset, email verification or account lockout.
-- No audit timeline endpoint or UI; audit entries are currently database records only.
-- No dashboards, conflict detection, QR codes or extension requests.
-- Expiry scanning runs while the API process is running. A production deployment should also run a scheduler so permits are expired even if the API is stopped; the startup scan catches up on restart.
-- Integration tests create unique fixture records in the configured database. Because `AuditLog` is append-only, those records are intentionally not deleted; use a disposable test database for repeated runs.
+- No plant or equipment reference endpoints; the permit form suggests IDs from existing permits and accepts valid IDs directly. `GET /api/references/areas` exists for the permit-list area filter.
+- No work-log list endpoint; the permit detail page shows the live work-log count and accepts new entries while a permit is active.
+- The dashboard exists with overview statistics, expiring-soon indicators and an approvals link, but conflict detection, QR codes and extension requests are not implemented.
+- Expiry scanning runs only while the API process is running. The startup scan catches up after a restart, but a separate scheduler would be needed for expiry while the API is stopped.
+- The JWT is kept in `localStorage`, so client-side script exposure is possible.
+- Integration tests create unique fixture records and leave append-only audit entries in place; use a disposable database for repeated runs.
 
-See `docs/technical-decisions.md` for design notes and remaining work.
+## What would be built next
+
+1. Admin user management and authentication hardening (HttpOnly cookies, CSRF protection, refresh tokens, password reset and account lockout).
+2. Plant and equipment read endpoints with dependent form selects.
+3. A work-log list endpoint and a full activity timeline.
+4. Dashboard conflict detection, QR codes and extension requests.
+5. An external scheduler for expiry when the API process is stopped.
+
+## AI usage
+
+AI tools assisted with code scaffolding, refactors, debugging, test cases and documentation during development. The developer reviewed every change, ran typechecks, tests and builds, verified migrations, and understands the implementation.
+
+See `docs/technical-decisions.md` for design notes and `docs/deployment.md` for platform setup.
