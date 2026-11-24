@@ -174,6 +174,7 @@ export interface PermitQuery {
   areaId?: string;
   startDate?: string;
   endDate?: string;
+  myApprovalsPending?: boolean;
   search?: string;
 }
 

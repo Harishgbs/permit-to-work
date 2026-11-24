@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { canAccessArea } from '../authorization/area-access';
 import { HttpError } from '../../utils/http-error';
+import { isApproverActor, myPendingApprovalPermitWhere } from './approval-access';
 import { writeAudit } from './audit';
 import { assertTransition } from './state-machine';
 import type { CreatePermitInput, ListPermitsInput } from './permit.validation';
@@ -208,6 +209,7 @@ export async function submitPermit(id: string, actor: PermitActor) {
 
 export async function listPermits(input: ListPermitsInput, actor: PermitActor) {
   const where: Prisma.PermitWhereInput = {};
+  const and: Prisma.PermitWhereInput[] = [];
 
   if (input.status) where.status = input.status;
   if (input.type) where.type = input.type;
@@ -239,6 +241,17 @@ export async function listPermits(input: ListPermitsInput, actor: PermitActor) {
 
     where.plannedStartAt = plannedStartAt;
   }
+
+  if (input.myApprovalsPending) {
+    if (!isApproverActor(actor)) {
+      throw new HttpError(403, 'Insufficient role to filter by pending approvals');
+    }
+
+    const pendingWhere = myPendingApprovalPermitWhere(actor);
+    if (pendingWhere) and.push(pendingWhere);
+  }
+
+  if (and.length > 0) where.AND = and;
 
   const [data, total] = await Promise.all([
     prisma.permit.findMany({

@@ -7,6 +7,7 @@ export interface PermitFilterValues {
   areaId: string;
   startDate: string;
   endDate: string;
+  myApprovalsPending: boolean;
 }
 
 export const emptyPermitFilters: PermitFilterValues = {
@@ -16,6 +17,7 @@ export const emptyPermitFilters: PermitFilterValues = {
   areaId: '',
   startDate: '',
   endDate: '',
+  myApprovalsPending: false,
 };
 
 export function filtersFromSearchParams(params: URLSearchParams): PermitFilterValues {
@@ -26,6 +28,7 @@ export function filtersFromSearchParams(params: URLSearchParams): PermitFilterVa
     areaId: params.get('areaId') ?? '',
     startDate: params.get('startDate') ?? '',
     endDate: params.get('endDate') ?? '',
+    myApprovalsPending: params.get('myApprovalsPending') === 'true',
   };
 }
 
@@ -48,6 +51,7 @@ export function permitQueryFromFilters(
     ...(filters.areaId ? { areaId: filters.areaId } : {}),
     ...(filters.startDate ? { startDate: filters.startDate } : {}),
     ...(filters.endDate ? { endDate: filters.endDate } : {}),
+    ...(filters.myApprovalsPending ? { myApprovalsPending: true } : {}),
   };
 }
 
@@ -63,6 +67,7 @@ export function searchParamsFromFilters(
   if (filters.areaId) params.set('areaId', filters.areaId);
   if (filters.startDate) params.set('startDate', filters.startDate);
   if (filters.endDate) params.set('endDate', filters.endDate);
+  if (filters.myApprovalsPending) params.set('myApprovalsPending', 'true');
   if (page > 1) params.set('page', String(page));
 
   return params;

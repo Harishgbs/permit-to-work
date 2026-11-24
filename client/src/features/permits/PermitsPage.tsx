@@ -14,7 +14,7 @@ import {
   searchParamsFromFilters,
   type PermitFilterValues,
 } from '../../lib/permitFilters';
-import { hasPermission } from '../../lib/permissions';
+import { hasPermission, isApprover } from '../../lib/permissions';
 import type { PermitStatus, PermitType } from '../../types/api';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useAuth } from '../auth/AuthProvider';
@@ -43,6 +43,30 @@ const types: PermitType[] = [
 const selectClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20';
 
+export function MyApprovalsPendingToggle({
+  visible,
+  checked,
+  onChange,
+}: {
+  visible: boolean;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-900">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 accent-teal-700"
+      />
+      My Approvals Pending
+    </label>
+  );
+}
+
 export default function PermitsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -65,9 +89,13 @@ export default function PermitsPage() {
     setFilterError(null);
   }, [searchParams]);
 
-  const setField = (field: keyof PermitFilterValues, value: string) => {
+  const setField = (field: Exclude<keyof PermitFilterValues, 'myApprovalsPending'>, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
     if (field === 'startDate' || field === 'endDate') setFilterError(null);
+  };
+
+  const setMyApprovalsPending = (checked: boolean) => {
+    setFilters((current) => ({ ...current, myApprovalsPending: checked }));
   };
 
   const applyFilters = (values: PermitFilterValues) => {
@@ -212,7 +240,12 @@ export default function PermitsPage() {
               className={`${selectClass} mt-1`}
             />
           </div>
-          <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row lg:col-span-4 lg:justify-end">
+          <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-center lg:col-span-4 lg:justify-end">
+            <MyApprovalsPendingToggle
+              visible={isApprover(user)}
+              checked={filters.myApprovalsPending}
+              onChange={setMyApprovalsPending}
+            />
             {filterError && (
               <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                 {filterError}

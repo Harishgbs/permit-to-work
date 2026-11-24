@@ -70,10 +70,11 @@ The area filter uses `GET /api/references/areas`, which reads areas from the dat
 
 Permit list date filters use `plannedStartAt` because the assignment defines the planned work window and the register already displays planned start. `startDate` and `endDate` are `YYYY-MM-DD` values applied inclusively in the database, with server-side validation for valid calendar dates and non-reversed ranges.
 
+The "My Approvals Pending" filter reuses `Approval` rows and the same eligibility rules as the decision endpoint. Area Owners match pending `AREA_OWNER` approvals in their assigned area, Safety Officers match pending `SAFETY_OFFICER` approvals across areas, Admins match any pending role, and nobody matches a permit they requested. Requesters receive `403`; the toggle is hidden from them in the client. The filter is combined with existing filters through a Prisma `AND` and is supported by an `Approval(status, requiredRole)` index.
+
 ## Remaining work
 
 - Admin-only user management, refresh tokens, password reset and account lockout
-- Permit-list "my approvals pending" filter; the dedicated approval view covers the workflow
 - Plant and equipment read endpoints with dependent selects
 - Work-log list endpoint with a full activity timeline
 - Dashboard conflict detection, QR codes and extension requests

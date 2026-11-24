@@ -10,7 +10,7 @@ import {
 describe('permit filter interactions', () => {
   it('reads all active filters from query parameters', () => {
     const params = new URLSearchParams(
-      'search=pump&status=ACTIVE&type=HOT_WORK&areaId=area-1&startDate=2026-11-01&endDate=2026-11-30&page=2',
+      'search=pump&status=ACTIVE&type=HOT_WORK&areaId=area-1&startDate=2026-11-01&endDate=2026-11-30&myApprovalsPending=true&page=2',
     );
 
     expect(filtersFromSearchParams(params)).toEqual({
@@ -20,6 +20,7 @@ describe('permit filter interactions', () => {
       areaId: 'area-1',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
+      myApprovalsPending: true,
     });
   });
 
@@ -31,6 +32,7 @@ describe('permit filter interactions', () => {
       areaId: 'area-1',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
+      myApprovalsPending: true,
     });
 
     expect(params.get('search')).toBe('pump');
@@ -39,6 +41,7 @@ describe('permit filter interactions', () => {
     expect(params.get('areaId')).toBe('area-1');
     expect(params.get('startDate')).toBe('2026-11-01');
     expect(params.get('endDate')).toBe('2026-11-30');
+    expect(params.get('myApprovalsPending')).toBe('true');
     expect(params.has('page')).toBe(false);
   });
 
@@ -56,6 +59,7 @@ describe('permit filter interactions', () => {
           areaId: 'area-1',
           startDate: '2026-11-01',
           endDate: '2026-11-30',
+          myApprovalsPending: true,
         },
         2,
         10,
@@ -69,7 +73,25 @@ describe('permit filter interactions', () => {
       areaId: 'area-1',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
+      myApprovalsPending: true,
     });
+  });
+
+  it('enables and disables the approval filter while preserving other filters', () => {
+    const enabled = searchParamsFromFilters({
+      ...emptyPermitFilters,
+      status: 'PENDING_APPROVAL',
+      myApprovalsPending: true,
+    });
+    expect(filtersFromSearchParams(enabled).myApprovalsPending).toBe(true);
+
+    const disabled = searchParamsFromFilters({
+      ...filtersFromSearchParams(enabled),
+      myApprovalsPending: false,
+    });
+    expect(disabled.has('myApprovalsPending')).toBe(false);
+    expect(disabled.get('status')).toBe('PENDING_APPROVAL');
+    expect(filtersFromSearchParams(disabled).myApprovalsPending).toBe(false);
   });
 
   it('validates the date range before applying filters', () => {

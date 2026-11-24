@@ -9,6 +9,9 @@ const dateOnly = z
     const date = new Date(`${value}T00:00:00.000Z`);
     return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
   }, 'Use a valid calendar date');
+const booleanQuery = z
+  .union([z.boolean(), z.enum(['true', 'false'])])
+  .transform((value) => value === true || value === 'true');
 
 const sharedPermitFields = {
   contractorTeam: requiredText,
@@ -127,6 +130,7 @@ export const listPermitsSchema = z
     areaId: z.uuid().optional(),
     startDate: dateOnly.optional(),
     endDate: dateOnly.optional(),
+    myApprovalsPending: booleanQuery.optional(),
     search: z.string().trim().optional(),
   })
   .superRefine((value, ctx) => {

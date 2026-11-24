@@ -159,6 +159,7 @@ model Approval {
 
   @@unique([permitId, step])
   @@index([approverId])
+  @@index([status, requiredRole])
 }
 
 model AuditLog {

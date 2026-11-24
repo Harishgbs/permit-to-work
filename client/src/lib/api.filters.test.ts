@@ -29,6 +29,7 @@ describe('permit filter API requests', () => {
       areaId: 'area-1',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
+      myApprovalsPending: true,
       search: 'pump',
     });
 
@@ -42,6 +43,7 @@ describe('permit filter API requests', () => {
       areaId: 'area-1',
       startDate: '2026-11-01',
       endDate: '2026-11-30',
+      myApprovalsPending: 'true',
       search: 'pump',
     });
   });

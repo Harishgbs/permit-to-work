@@ -1,6 +1,7 @@
 import type { PermitStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { HttpError } from '../../utils/http-error';
+import { isApproverActor, pendingApprovalWhere } from './approval-access';
 import { writeAudit } from './audit';
 import {
   assertAreaAccess,
@@ -50,7 +51,7 @@ function assertApproverEligibility(
   permit: { requesterId: string; areaId: string },
   actor: PermitActor,
 ): void {
-  if (!['AREA_OWNER', 'SAFETY_OFFICER', 'ADMIN'].includes(actor.role)) {
+  if (!isApproverActor(actor)) {
     throw new HttpError(403, 'Insufficient role to decide on approvals');
   }
 
@@ -78,8 +79,7 @@ async function decideApproval(
     const approval = await tx.approval.findFirst({
       where: {
         permitId: id,
-        status: 'PENDING',
-        ...(actor.role === 'ADMIN' ? {} : { requiredRole: actor.role }),
+        ...pendingApprovalWhere(actor),
       },
       orderBy: { step: 'asc' },
     });

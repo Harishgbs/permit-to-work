@@ -201,6 +201,17 @@ function plannedDateOverrides(days: number) {
 
 const dateKey = (date: Date) => date.toISOString().slice(0, 10);
 
+async function submitDraft(token = tokens.requester, overrides: Record<string, unknown> = {}) {
+  const draft = await createDraft(token, overrides);
+  const response = await post(`/${draft.id}/submit`, token);
+  expect(response.status).toBe(200);
+  return draft.id as string;
+}
+
+function myPendingParams(extra: Record<string, string> = {}) {
+  return new URLSearchParams({ pageSize: '100', myApprovalsPending: 'true', ...extra });
+}
+
 describe('permit validation and creation', () => {
   it('rejects missing type-specific fields', async () => {
     const typeData = { hotWorkType: 'WELDING' };
@@ -808,6 +819,169 @@ describe('permit list filters', () => {
     expect(response.body.data.every((permit: { areaId: string }) => permit.areaId === areaAId)).toBe(
       true,
     );
+  });
+});
+
+describe('my approvals pending filter', () => {
+  it('rejects requesters because they are not approvers', async () => {
+    const response = await get(`?${myPendingParams().toString()}`, tokens.requester);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toContain('Insufficient role to filter by pending approvals');
+  });
+
+  it('returns only area-owner approvals in the owner area', async () => {
+    const token = `owner-queue-${unique.slice(0, 8)}`;
+    const inAreaA = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} a`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+    const inAreaB = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} b`,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+
+    const response = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.ownerA);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((permit: { id: string }) => permit.id)).toEqual([inAreaA]);
+    expect(response.body.data.some((permit: { id: string }) => permit.id === inAreaB)).toBe(false);
+  });
+
+  it('returns safety-officer approvals across areas', async () => {
+    const token = `safety-queue-${unique.slice(0, 8)}`;
+    const inAreaA = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} a`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+    const inAreaB = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} b`,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+
+    const response = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.safety);
+
+    expect(response.status).toBe(200);
+    const ids = response.body.data.map((permit: { id: string }) => permit.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toEqual(expect.arrayContaining([inAreaA, inAreaB]));
+  });
+
+  it('lets admins see either approval step across areas but not their own requests', async () => {
+    const token = `admin-queue-${unique.slice(0, 8)}`;
+    const ownerStep = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} owner`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+    const safetyStep = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} safety`,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+    const ownerDecision = await post(`/${safetyStep}/approve`, tokens.ownerB, {
+      comment: 'Area B checks complete',
+    });
+    expect(ownerDecision.status).toBe(200);
+
+    const ownRequest = await submitDraft(tokens.admin, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} own`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+
+    const response = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    const ids = response.body.data.map((permit: { id: string }) => permit.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toEqual(expect.arrayContaining([ownerStep, safetyStep]));
+    expect(ids).not.toContain(ownRequest);
+  });
+
+  it('preserves status, type, area, date-range and search filters', async () => {
+    const token = `combined-queue-${unique.slice(0, 8)}`;
+    const day = dateKey(dayFromNow(0));
+    const common = {
+      ...plannedDateOverrides(0),
+      workDescription: token,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    };
+    const matching = await submitDraft(tokens.requester, common);
+    await submitDraft(tokens.requester, {
+      ...validLotoInput({ workDescription: token, areaId: areaAId, equipmentId: equipmentAId }),
+      ...plannedDateOverrides(0),
+    });
+    await submitDraft(tokens.requester, {
+      ...common,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+    await submitDraft(tokens.requester, {
+      ...common,
+      ...plannedDateOverrides(3),
+    });
+    await createDraft(tokens.requester, common);
+
+    const params = myPendingParams({
+      status: 'PENDING_APPROVAL',
+      type: 'HOT_WORK',
+      areaId: areaAId,
+      startDate: day,
+      endDate: day,
+      search: token,
+    });
+    const response = await get(`?${params.toString()}`, tokens.ownerA);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((permit: { id: string }) => permit.id)).toEqual([matching]);
+  });
+
+  it('returns no permits after the matching approval step is decided', async () => {
+    const token = `decided-queue-${unique.slice(0, 8)}`;
+    const permitId = await submitDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} permit`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+    const ownerDecision = await post(`/${permitId}/approve`, tokens.ownerA, {
+      comment: 'Area checks complete',
+    });
+    expect(ownerDecision.status).toBe(200);
+
+    const ownerAfter = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.ownerA);
+    expect(ownerAfter.status).toBe(200);
+    expect(ownerAfter.body.data).toEqual([]);
+
+    const otherOwner = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.ownerB);
+    expect(otherOwner.status).toBe(200);
+    expect(otherOwner.body.data).toEqual([]);
+
+    const safetyBefore = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.safety);
+    expect(safetyBefore.status).toBe(200);
+    expect(safetyBefore.body.data.map((permit: { id: string }) => permit.id)).toEqual([permitId]);
+
+    const safetyDecision = await post(`/${permitId}/approve`, tokens.safety, {
+      comment: 'Safety checks complete',
+    });
+    expect(safetyDecision.status).toBe(200);
+
+    const safetyAfter = await get(`?${myPendingParams({ search: token }).toString()}`, tokens.safety);
+    expect(safetyAfter.status).toBe(200);
+    expect(safetyAfter.body.data).toEqual([]);
   });
 });
 
