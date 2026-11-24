@@ -1,6 +1,7 @@
 import { ClipboardList } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import EmptyState from '../../components/ui/EmptyState';
+import ExpiryIndicator from '../../components/ui/ExpiryIndicator';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { formatDate, formatType } from '../../lib/format';
 import type { Permit } from '../../types/api';
@@ -57,6 +58,11 @@ export default function PermitTable({
               <td className="px-4 py-3 text-slate-600">{formatDate(permit.plannedStartAt)}</td>
               <td className="px-4 py-3">
                 <StatusBadge status={permit.status} />
+                {(permit.status === 'ACTIVE' || permit.status === 'EXPIRED') && (
+                  <div className="mt-1.5">
+                    <ExpiryIndicator permit={permit} compact />
+                  </div>
+                )}
               </td>
               <td className="px-4 py-3 text-right">
                 <Link

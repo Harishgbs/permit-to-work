@@ -16,6 +16,7 @@ import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import ErrorState from '../../components/ui/ErrorState';
+import ExpiryIndicator from '../../components/ui/ExpiryIndicator';
 import Field from '../../components/ui/Field';
 import Modal from '../../components/ui/Modal';
 import StatusBadge from '../../components/ui/StatusBadge';
@@ -202,6 +203,11 @@ export default function PermitDetailPage() {
               Created {formatDateTime(data.createdAt)} · Version {data.version} · Requested by{' '}
               {data.requester.name}
             </p>
+            {(data.status === 'ACTIVE' || data.status === 'EXPIRED') && (
+              <div className="mt-3">
+                <ExpiryIndicator permit={data} />
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {data.status === 'DRAFT' && canEditDraft(user, data) && (

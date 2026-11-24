@@ -20,6 +20,7 @@ import { hasPermission } from '../../lib/permissions';
 import type { Permit } from '../../types/api';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import PermitTable from '../permits/PermitTable';
+import ExpiringSoonPanel from './ExpiringSoonPanel';
 
 interface DashboardData {
   all: Permit[];
@@ -143,6 +144,8 @@ export default function DashboardPage() {
               </div>
             ))}
           </section>
+
+          <ExpiringSoonPanel permits={permits} />
 
           <div className="grid gap-6 xl:grid-cols-3">
             <Card
