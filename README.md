@@ -195,7 +195,7 @@ Activation requires a time at or after `plannedStartAt` and sets `validUntil` fr
 ## Technical decisions
 
 - PostgreSQL and Prisma were chosen for relational integrity, typed queries, enums and versioned SQL migrations. One shared `Permit` table avoids four duplicate lifecycles; type-specific fields live in `typeData` JSONB and are validated by Zod.
-- Prisma Client uses the pooled `DATABASE_URL`; Prisma CLI migrations use the non-pooled `DIRECT_URL`. Migration advisory locks require a stable database session, so migrations run as a one-off step instead of on every API restart.
+- Prisma Client uses the pooled `DATABASE_URL`; Prisma CLI migrations use the non-pooled `DIRECT_URL`. Migration advisory locks require a stable database session, so the migration script skips on Render and migrations are applied once from a trusted local checkout.
 - Authorization is centralized in a role-to-permission map and server-side middleware. Area Owners are restricted to their assigned area; Safety Officers act across areas; administrators follow the existing permission and approval rules.
 - Lifecycle writes run in transactions with a status-and-version guard to prevent concurrent transitions from silently overwriting each other. Audit entries are append-only at the database level.
 - The JWT is stored in `localStorage` for a simple stateless demo. This is XSS-sensitive; HttpOnly cookies, CSRF protection and refresh-token rotation are future production work.
@@ -216,7 +216,7 @@ Server tests need `DATABASE_URL` pointing to a disposable PostgreSQL database wi
 
 The repository includes `vercel.json` and `render.yaml` for Vercel and Render, with Neon PostgreSQL as the production database. See `docs/deployment.md` for platform setup steps and the complete list of required environment variables. Production secrets are entered only in the platform dashboards; `.env` files are gitignored and no secret values are stored in the repository.
 
-The Render service binds to the platform-provided `PORT` on `0.0.0.0` and allows origins listed in `CORS_ORIGIN`. Prisma migrations are run once from a trusted local checkout using `DIRECT_URL`, not on every API restart. Seeding is manual and only appropriate when demo data is wanted.
+The Render service binds to the platform-provided `PORT` on `0.0.0.0` and allows origins listed in `CORS_ORIGIN`. The migration script skips automatically when `RENDER=true`, even if an older start command invokes it; Prisma migrations are applied once from a trusted local checkout using `DIRECT_URL`. Seeding is manual and only appropriate when demo data is wanted.
 
 ## Health check
 

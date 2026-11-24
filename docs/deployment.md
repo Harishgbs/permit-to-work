@@ -48,7 +48,7 @@ Never commit `.env` files or paste secrets into chat. The Blueprint generates `J
 7. Enter the final Vercel origin into `CORS_ORIGIN`. If Vercel is not deployed yet, deploy Vercel first or use its preview URL, then rerun the Render deploy after updating the variable.
 8. Keep the generated `JWT_SECRET`; do not replace it with a value from chat.
 9. Deploy. The build installs dependencies, generates the Prisma client and compiles the server.
-10. From a trusted local checkout with `DIRECT_URL` set in `server/.env`, run `npm run prisma:migrate:deploy -w server` once. Do not run migrations on every API restart; repeat this command only when new Prisma migrations are added.
+10. From a trusted local checkout with `DIRECT_URL` set in `server/.env`, run `npm run prisma:migrate:deploy -w server` once. The script skips automatically when `RENDER=true`, so an older Render start command that still calls it will not run migrations. Repeat this command only when new Prisma migrations are added.
 11. Verify `GET /api/health` returns `{"status":"ok"}`.
 
 ### Manual Render web service settings
@@ -73,7 +73,7 @@ Migrations are intentionally not part of the API start command. After the first 
 npm run prisma:migrate:deploy -w server
 ```
 
-Only one migration command should run at a time. No reset command is used.
+Only one migration command should run at a time. No reset command is used. `scripts/migrate-deploy.mjs` exits immediately when `RENDER=true` unless `RUN_MIGRATIONS=1` is explicitly set, so normal Render restarts cannot take the advisory lock.
 
 Production seeding is intentionally not automatic. The seed script is idempotent but creates demo users and permits. If demo accounts are required, run this from the same local checkout:
 
