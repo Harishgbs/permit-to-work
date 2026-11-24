@@ -43,6 +43,11 @@ export interface Reference {
   name: string;
 }
 
+export interface AreaReference extends Reference {
+  plantId: string;
+  plantName: string;
+}
+
 export interface EquipmentReference {
   id: string;
   tag: string;
@@ -167,6 +172,8 @@ export interface PermitQuery {
   type?: PermitType;
   plantId?: string;
   areaId?: string;
+  startDate?: string;
+  endDate?: string;
   search?: string;
 }
 

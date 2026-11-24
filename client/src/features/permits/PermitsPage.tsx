@@ -6,8 +6,16 @@ import Card from '../../components/ui/Card';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorState from '../../components/ui/ErrorState';
 import { api } from '../../lib/api';
+import {
+  emptyPermitFilters,
+  filtersFromSearchParams,
+  isValidDateRange,
+  permitQueryFromFilters,
+  searchParamsFromFilters,
+  type PermitFilterValues,
+} from '../../lib/permitFilters';
 import { hasPermission } from '../../lib/permissions';
-import type { PermitQuery, PermitStatus, PermitType } from '../../types/api';
+import type { PermitStatus, PermitType } from '../../types/api';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useAuth } from '../auth/AuthProvider';
 import PermitTable from './PermitTable';
@@ -38,52 +46,47 @@ const selectClass =
 export default function PermitsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get('search') ?? '');
-  const [status, setStatus] = useState(searchParams.get('status') ?? '');
-  const [type, setType] = useState(searchParams.get('type') ?? '');
+  const activeFilters = filtersFromSearchParams(searchParams);
+  const [filters, setFilters] = useState(activeFilters);
+  const [filterError, setFilterError] = useState<string | null>(null);
 
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
   const pageSize = 10;
-  const query: PermitQuery = {
-    page,
-    pageSize,
-    search: searchParams.get('search') ?? undefined,
-    status: (searchParams.get('status') as PermitStatus | null) ?? undefined,
-    type: (searchParams.get('type') as PermitType | null) ?? undefined,
-  };
+  const query = permitQueryFromFilters(activeFilters, page, pageSize);
 
   const { data, error, isLoading, reload } = useAsyncData(
     () => api.listPermits(query),
     [searchParams.toString()],
   );
+  const { data: areas, error: areasError } = useAsyncData(() => api.listAreas(), []);
 
   useEffect(() => {
-    setSearch(searchParams.get('search') ?? '');
-    setStatus(searchParams.get('status') ?? '');
-    setType(searchParams.get('type') ?? '');
+    setFilters(filtersFromSearchParams(searchParams));
+    setFilterError(null);
   }, [searchParams]);
 
-  const updateFilters = (next: { search?: string; status?: string; type?: string; page?: number }) => {
-    const params = new URLSearchParams();
+  const setField = (field: keyof PermitFilterValues, value: string) => {
+    setFilters((current) => ({ ...current, [field]: value }));
+    if (field === 'startDate' || field === 'endDate') setFilterError(null);
+  };
 
-    const values = {
-      search: next.search ?? searchParams.get('search') ?? '',
-      status: next.status ?? searchParams.get('status') ?? '',
-      type: next.type ?? searchParams.get('type') ?? '',
-      page: next.page ?? 1,
-    };
+  const applyFilters = (values: PermitFilterValues) => {
+    if (!isValidDateRange(values)) {
+      setFilterError('Start date must be on or before end date.');
+      return;
+    }
 
-    if (values.search) params.set('search', values.search);
-    if (values.status) params.set('status', values.status);
-    if (values.type) params.set('type', values.type);
-    if (values.page > 1) params.set('page', String(values.page));
+    setFilterError(null);
+    setSearchParams(searchParamsFromFilters(values));
+  };
 
-    setSearchParams(params);
+  const changePage = (nextPage: number) => {
+    setSearchParams(searchParamsFromFilters(activeFilters, nextPage));
   };
 
   const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    updateFilters({ search: search.trim(), status, type });
+    applyFilters({ ...filters, search: filters.search.trim() });
   };
 
   const meta = data?.meta;
@@ -109,8 +112,8 @@ export default function PermitsPage() {
       </div>
 
       <Card>
-        <form onSubmit={handleFilterSubmit} className="grid gap-3 md:grid-cols-[1.6fr_1fr_1fr_auto] md:items-end">
-          <div>
+        <form onSubmit={handleFilterSubmit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+          <div className="sm:col-span-2">
             <label htmlFor="permit-search" className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
               Search
             </label>
@@ -118,8 +121,8 @@ export default function PermitsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
               <input
                 id="permit-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={filters.search}
+                onChange={(event) => setField('search', event.target.value)}
                 placeholder="Permit no., description or contractor"
                 className={`${selectClass} pl-9`}
               />
@@ -131,8 +134,8 @@ export default function PermitsPage() {
             </label>
             <select
               id="permit-status"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
+              value={filters.status}
+              onChange={(event) => setField('status', event.target.value)}
               className={`${selectClass} mt-1`}
             >
               <option value="">All statuses</option>
@@ -149,8 +152,8 @@ export default function PermitsPage() {
             </label>
             <select
               id="permit-type"
-              value={type}
-              onChange={(event) => setType(event.target.value)}
+              value={filters.type}
+              onChange={(event) => setField('type', event.target.value)}
               className={`${selectClass} mt-1`}
             >
               <option value="">All types</option>
@@ -161,9 +164,75 @@ export default function PermitsPage() {
               ))}
             </select>
           </div>
-          <Button type="submit" variant="secondary" icon={<Filter className="h-4 w-4" aria-hidden="true" />}>
-            Apply
-          </Button>
+          <div>
+            <label htmlFor="permit-area" className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Area
+            </label>
+            <select
+              id="permit-area"
+              value={filters.areaId}
+              onChange={(event) => setField('areaId', event.target.value)}
+              className={`${selectClass} mt-1`}
+            >
+              <option value="">All areas</option>
+              {filters.areaId && !areas?.some((area) => area.id === filters.areaId) && (
+                <option value={filters.areaId}>Selected area</option>
+              )}
+              {areas?.map((area) => (
+                <option key={area.id} value={area.id}>
+                  {area.name} · {area.plantName}
+                </option>
+              ))}
+            </select>
+            {areasError && (
+              <p className="mt-1 text-xs text-red-600">Area list unavailable. Retry to load areas.</p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="permit-start-date" className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Planned start from
+            </label>
+            <input
+              id="permit-start-date"
+              type="date"
+              value={filters.startDate}
+              onChange={(event) => setField('startDate', event.target.value)}
+              className={`${selectClass} mt-1`}
+            />
+          </div>
+          <div>
+            <label htmlFor="permit-end-date" className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Planned start to
+            </label>
+            <input
+              id="permit-end-date"
+              type="date"
+              value={filters.endDate}
+              onChange={(event) => setField('endDate', event.target.value)}
+              className={`${selectClass} mt-1`}
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row lg:col-span-4 lg:justify-end">
+            {filterError && (
+              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                {filterError}
+              </p>
+            )}
+            <Button type="submit" variant="secondary" icon={<Filter className="h-4 w-4" aria-hidden="true" />}>
+              Apply
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => applyFilters(emptyPermitFilters)}
+              disabled={!searchParams.toString()}
+            >
+              Clear
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
+            Date filters match each permit's planned start date, inclusive of both selected days.
+          </p>
         </form>
       </Card>
 
@@ -193,7 +262,7 @@ export default function PermitsPage() {
                 variant="secondary"
                 size="sm"
                 disabled={page <= 1}
-                onClick={() => updateFilters({ page: page - 1 })}
+                onClick={() => changePage(page - 1)}
               >
                 Previous
               </Button>
@@ -205,7 +274,7 @@ export default function PermitsPage() {
                 variant="secondary"
                 size="sm"
                 disabled={page >= totalPages}
-                onClick={() => updateFilters({ page: page + 1 })}
+                onClick={() => changePage(page + 1)}
               >
                 Next
               </Button>

@@ -184,6 +184,23 @@ async function activePermit() {
   return permitId;
 }
 
+function dayFromNow(days: number): Date {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date;
+}
+
+function plannedDateOverrides(days: number) {
+  const plannedStartAt = dayFromNow(days);
+  return {
+    plannedStartAt: plannedStartAt.toISOString(),
+    plannedEndAt: new Date(plannedStartAt.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+const dateKey = (date: Date) => date.toISOString().slice(0, 10);
+
 describe('permit validation and creation', () => {
   it('rejects missing type-specific fields', async () => {
     const typeData = { hotWorkType: 'WELDING' };
@@ -674,6 +691,150 @@ describe('suspension, expiry and closure', () => {
     const activatedAgain = await post(`/${permitId}/activate`, tokens.safety);
     expect(activatedAgain.status).toBe(409);
     expect(activatedAgain.body.error).toContain('Cannot change permit status');
+  });
+});
+
+describe('permit list filters', () => {
+  it('filters by real area id in the database query', async () => {
+    const token = `area-filter-${unique.slice(0, 8)}`;
+    const inAreaA = await createDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} area a`,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    });
+    const inAreaB = await createDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} area b`,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+
+    const params = new URLSearchParams({ pageSize: '100', search: token, areaId: areaBId });
+    const response = await get(`?${params.toString()}`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((permit: { id: string }) => permit.id)).toEqual([inAreaB.id]);
+    expect(response.body.data[0].areaId).toBe(areaBId);
+    expect(response.body.data[0].id).not.toBe(inAreaA.id);
+  });
+
+  it('filters by planned start date inclusively', async () => {
+    const token = `date-filter-${unique.slice(0, 8)}`;
+    const before = await createDraft(tokens.requester, {
+      ...plannedDateOverrides(-1),
+      workDescription: `${token} before`,
+    });
+    const inside = await createDraft(tokens.requester, {
+      ...plannedDateOverrides(0),
+      workDescription: `${token} inside`,
+    });
+    const after = await createDraft(tokens.requester, {
+      ...plannedDateOverrides(1),
+      workDescription: `${token} after`,
+    });
+    const day = dateKey(dayFromNow(0));
+
+    const params = new URLSearchParams({
+      pageSize: '100',
+      search: token,
+      startDate: day,
+      endDate: day,
+    });
+    const response = await get(`?${params.toString()}`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((permit: { id: string }) => permit.id)).toEqual([inside.id]);
+    expect(response.body.data.some((permit: { id: string }) => permit.id === before.id)).toBe(false);
+    expect(response.body.data.some((permit: { id: string }) => permit.id === after.id)).toBe(false);
+  });
+
+  it('combines status, type, area, date range and search filters', async () => {
+    const token = `combined-filter-${unique.slice(0, 8)}`;
+    const day = dateKey(dayFromNow(0));
+    const common = {
+      ...plannedDateOverrides(0),
+      workDescription: token,
+      areaId: areaAId,
+      equipmentId: equipmentAId,
+    };
+    const matching = await createDraft(tokens.requester, common);
+    await createDraft(tokens.requester, {
+      ...common,
+      ...validLotoInput({ workDescription: token, areaId: areaAId, equipmentId: equipmentAId }),
+    });
+    await createDraft(tokens.requester, {
+      ...common,
+      areaId: areaBId,
+      equipmentId: equipmentBId,
+    });
+    await createDraft(tokens.requester, {
+      ...common,
+      ...plannedDateOverrides(3),
+    });
+
+    const params = new URLSearchParams({
+      pageSize: '100',
+      status: 'DRAFT',
+      type: 'HOT_WORK',
+      areaId: areaAId,
+      startDate: day,
+      endDate: day,
+      search: token,
+    });
+    const response = await get(`?${params.toString()}`, tokens.admin);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((permit: { id: string }) => permit.id)).toEqual([matching.id]);
+  });
+
+  it('rejects invalid date ranges and malformed dates', async () => {
+    const first = dateKey(dayFromNow(1));
+    const second = dateKey(dayFromNow(0));
+
+    const reversed = await get(`?startDate=${first}&endDate=${second}`, tokens.admin);
+    expect(reversed.status).toBe(400);
+    expect(reversed.body.error).toContain('End date must be on or after start date');
+
+    const malformed = await get('?startDate=24-11-2026', tokens.admin);
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.error).toContain('YYYY-MM-DD');
+  });
+
+  it('keeps area-owner scoping when an area filter is supplied', async () => {
+    const response = await get(`?pageSize=100&areaId=${areaBId}`, tokens.ownerA);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.every((permit: { areaId: string }) => permit.areaId === areaAId)).toBe(
+      true,
+    );
+  });
+});
+
+describe('area reference data', () => {
+  it('returns real areas from the database scoped by role', async () => {
+    const admin = await request(createApp())
+      .get('/api/references/areas')
+      .set('Authorization', `Bearer ${tokens.admin}`);
+    expect(admin.status).toBe(200);
+
+    const ids = admin.body.map((area: { id: string }) => area.id);
+    expect(ids).toContain(areaAId);
+    expect(ids).toContain(areaBId);
+    expect(
+      admin.body.every((area: { plantName: string }) => typeof area.plantName === 'string'),
+    ).toBe(true);
+
+    const owner = await request(createApp())
+      .get('/api/references/areas')
+      .set('Authorization', `Bearer ${tokens.ownerA}`);
+    expect(owner.status).toBe(200);
+    expect(owner.body.map((area: { id: string }) => area.id)).toEqual([areaAId]);
+  });
+
+  it('requires authentication', async () => {
+    const response = await request(createApp()).get('/api/references/areas');
+    expect(response.status).toBe(401);
   });
 });
 

@@ -226,6 +226,20 @@ export async function listPermits(input: ListPermitsInput, actor: PermitActor) {
     ];
   }
 
+  if (input.startDate || input.endDate) {
+    const plannedStartAt: Prisma.DateTimeFilter = {};
+
+    if (input.startDate) {
+      plannedStartAt.gte = new Date(`${input.startDate}T00:00:00.000Z`);
+    }
+
+    if (input.endDate) {
+      plannedStartAt.lte = new Date(`${input.endDate}T23:59:59.999Z`);
+    }
+
+    where.plannedStartAt = plannedStartAt;
+  }
+
   const [data, total] = await Promise.all([
     prisma.permit.findMany({
       where,

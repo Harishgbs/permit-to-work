@@ -1,6 +1,7 @@
 import type {
   ActionResponse,
   ActivationResponse,
+  AreaReference,
   CloseResponse,
   LoginResponse,
   MeResponse,
@@ -104,6 +105,7 @@ export const api = {
   me: () => request<MeResponse>('/auth/me'),
   listPermits: (query: PermitQuery = {}) =>
     request<PermitListResponse>(`/permits${buildQuery(query)}`),
+  listAreas: () => request<AreaReference[]>('/references/areas'),
   getPermit: (id: string) => request<Permit>(`/permits/${encodeURIComponent(id)}`),
   getPermitAudit: (id: string) =>
     request<PermitAuditEntry[]>(`/permits/${encodeURIComponent(id)}/audit`),

@@ -66,13 +66,15 @@ The React client uses a single typed API module built on `fetch`. It sends the J
 
 The UI uses role-aware navigation and action rendering only as a usability layer. Every mutation still calls the backend, where permission checks, state transitions and optimistic version guards are enforced.
 
-Reference data is derived from existing permit responses because no plant, area or equipment read endpoints exist. The permit form accepts IDs directly, so the first permit can still be created from an empty database. Work-log entries can be added while a permit is active, but entries cannot be listed because the API has no work-log read endpoint. Similarly, the activity screen explains that the append-only audit table has no read endpoint yet instead of presenting placeholder data as a working feature.
+The area filter uses `GET /api/references/areas`, which reads areas from the database and scopes Area Owners to their assigned area. Plant and equipment options for the permit form are still derived from existing permit responses, and that form accepts IDs directly so the first permit can be created from an empty database. Work-log entries can be added while a permit is active, but entries cannot be listed because the API has no work-log read endpoint. Similarly, the activity screen explains that the append-only audit table has no read endpoint yet instead of presenting placeholder data as a working feature.
+
+Permit list date filters use `plannedStartAt` because the assignment defines the planned work window and the register already displays planned start. `startDate` and `endDate` are `YYYY-MM-DD` values applied inclusively in the database, with server-side validation for valid calendar dates and non-reversed ranges.
 
 ## Remaining work
 
 - Admin-only user management, refresh tokens, password reset and account lockout
-- Audit timeline endpoint and UI
-- Plant, area and equipment read endpoints with dependent selects
+- Permit-list "my approvals pending" filter; the dedicated approval view covers the workflow
+- Plant and equipment read endpoints with dependent selects
 - Work-log list endpoint with a full activity timeline
 - Dashboard conflict detection, QR codes and extension requests
 - External scheduler for expiry when the API process is stopped

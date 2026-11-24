@@ -2,6 +2,13 @@ import { z } from 'zod';
 
 const requiredText = z.string().trim().min(1);
 const isoDate = z.coerce.date();
+const dateOnly = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD for date filters')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+  }, 'Use a valid calendar date');
 
 const sharedPermitFields = {
   contractorTeam: requiredText,
@@ -99,26 +106,38 @@ export const createPermitSchema = z
 
 export const updatePermitSchema = createPermitSchema;
 
-export const listPermitsSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  status: z.enum([
-    'DRAFT',
-    'PENDING_APPROVAL',
-    'APPROVED',
-    'ACTIVE',
-    'SUSPENDED',
-    'REJECTED',
-    'EXPIRED',
-    'CLOSED',
-    'CLOSED_VERIFIED',
-    'CANCELLED',
-  ]).optional(),
-  type: z.enum(['HOT_WORK', 'CONFINED_SPACE', 'WORKING_AT_HEIGHT', 'ELECTRICAL_LOTO']).optional(),
-  plantId: z.uuid().optional(),
-  areaId: z.uuid().optional(),
-  search: z.string().trim().optional(),
-});
+export const listPermitsSchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    status: z.enum([
+      'DRAFT',
+      'PENDING_APPROVAL',
+      'APPROVED',
+      'ACTIVE',
+      'SUSPENDED',
+      'REJECTED',
+      'EXPIRED',
+      'CLOSED',
+      'CLOSED_VERIFIED',
+      'CANCELLED',
+    ]).optional(),
+    type: z.enum(['HOT_WORK', 'CONFINED_SPACE', 'WORKING_AT_HEIGHT', 'ELECTRICAL_LOTO']).optional(),
+    plantId: z.uuid().optional(),
+    areaId: z.uuid().optional(),
+    startDate: dateOnly.optional(),
+    endDate: dateOnly.optional(),
+    search: z.string().trim().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.startDate && value.endDate && value.startDate > value.endDate) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endDate'],
+        message: 'End date must be on or after start date',
+      });
+    }
+  });
 
 export const decisionSchema = z.object({
   comment: z.string().trim().optional(),

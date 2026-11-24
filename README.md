@@ -122,7 +122,8 @@ All permit endpoints require `Authorization: Bearer <token>`. The requester is d
 
 ```
 POST   /api/permits                     create a draft
-GET    /api/permits                     list permits with page/pageSize/status/type/plantId/areaId/search filters
+GET    /api/permits                     list permits with page/pageSize/status/type/plantId/areaId/startDate/endDate/search filters
+GET    /api/references/areas             list real areas available to the current user
 GET    /api/permits/:id                 get one permit
 GET    /api/permits/:id/audit           get chronological audit history for one permit
 PATCH  /api/permits/:id                 replace draft details
@@ -137,6 +138,8 @@ POST   /api/permits/:id/verify          safety verification of closure
 POST   /api/permits/:id/cancel          cancel a non-terminal permit
 POST   /api/permits/:id/work-logs       add a work log while active
 ```
+
+`startDate` and `endDate` are `YYYY-MM-DD` values that filter `plannedStartAt` inclusively, and the API rejects reversed ranges.
 
 Shared fields are `contractorTeam`, `workDescription`, `plantId`, `areaId`, `equipmentId`, `workLocation`, `plannedStartAt`, `plannedEndAt`, `identifiedHazards`, `requiredPpe` and `precautions`. `typeData` is validated with a Zod discriminated union:
 
