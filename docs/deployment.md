@@ -48,7 +48,7 @@ Never commit `.env` files or paste secrets into chat. The Blueprint generates `J
 7. Enter the final Vercel origin into `CORS_ORIGIN`. If Vercel is not deployed yet, deploy Vercel first or use its preview URL, then rerun the Render deploy after updating the variable.
 8. Keep the generated `JWT_SECRET`; do not replace it with a value from chat.
 9. Deploy. The build installs dependencies, generates the Prisma client and compiles the server.
-10. The start command runs `prisma migrate deploy` using `DIRECT_URL` before starting the API. No reset command is used.
+10. From a trusted local checkout with `DIRECT_URL` set in `server/.env`, run `npm run prisma:migrate:deploy -w server` once. Do not run migrations on every API restart; repeat this command only when new Prisma migrations are added.
 11. Verify `GET /api/health` returns `{"status":"ok"}`.
 
 ### Manual Render web service settings
@@ -60,22 +60,32 @@ If you create a normal **Web Service** instead of a Blueprint, use these exact f
 | Branch | `main` |
 | Root Directory | leave blank |
 | Build Command | `npm ci --include=dev && npm run prisma:generate --workspace server && npm run build --workspace server` |
-| Start Command | `npm run prisma:migrate:deploy --workspace server && npm run start --workspace server` |
+| Start Command | `npm run start --workspace server` |
 | Health Check Path | `/api/health` |
 
-The build must include dev dependencies explicitly because `NODE_ENV=production` makes `npm ci` omit pure dev dependencies such as `@types/node`. Do not use **Add from .env** in the Render dashboard; local `.env` files point to the local Podman database. Set `DATABASE_URL` to the pooled Neon URL and `DIRECT_URL` to the direct Neon URL in the service environment.
+The build must include dev dependencies explicitly because `NODE_ENV=production` makes `npm ci` omit pure dev dependencies such as `@types/node`. Do not use **Add from .env** in the Render dashboard; enter production values directly there. Set `DATABASE_URL` to the pooled Neon URL and `DIRECT_URL` to the direct Neon URL in the service environment, and keep any separate local `.env` used for migrations out of version control.
 
-Production seeding is intentionally not automatic. The seed script is idempotent but creates demo users and permits. If demo accounts are required, use Render Shell and run:
+## Production migrations
+
+Migrations are intentionally not part of the API start command. After the first deploy and whenever a new Prisma migration is added, run this once from the repository root in a trusted local checkout with `DIRECT_URL` configured in `server/.env`:
 
 ```bash
-npm run db:seed --workspace server
+npm run prisma:migrate:deploy -w server
+```
+
+Only one migration command should run at a time. No reset command is used.
+
+Production seeding is intentionally not automatic. The seed script is idempotent but creates demo users and permits. If demo accounts are required, run this from the same local checkout:
+
+```bash
+npm run db:seed -w server
 ```
 
 Run this only after confirming that demo data is appropriate for the production database.
 
 ## Migration lock timeouts
 
-If a deploy fails with Prisma `P1002` while acquiring advisory lock `72707369`, do not retry repeatedly. Confirm that `DIRECT_URL` is set to the direct Neon connection string, ensure no second Render deploy or migration command is running, then redeploy once. The direct connection is required because Prisma Migrate uses a PostgreSQL session-level advisory lock; transaction-mode poolers do not preserve that session state.
+If a manual migration fails with Prisma `P1002` while acquiring advisory lock `72707369`, do not retry repeatedly. Confirm that `DIRECT_URL` is set to the direct Neon connection string, ensure no second migration command is running, identify any stale advisory-lock holder, and then run `npm run prisma:migrate:deploy --workspace server` once. The direct connection is required because Prisma Migrate uses a PostgreSQL session-level advisory lock; transaction-mode poolers do not preserve that session state.
 
 ## Vercel frontend setup
 

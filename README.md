@@ -90,7 +90,7 @@ npm run db:seed -w server           # load repeatable demo seed data
 
 The initial migrations create the User, Plant, Area, Equipment, Permit, Approval and AuditLog tables. A second migration adds database triggers that make `AuditLog` append-only. The permit lifecycle migration adds `WorkLog`, role-based approval requirements, permit validity/version fields, nullable system audit actors and a PostgreSQL sequence for permit numbers.
 
-The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses, with approvals where applicable. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates. Deployed environments should use `npm run prisma:migrate:deploy -w server`; only seed a deployment when demo data is intentionally wanted.
+The seed script is idempotent: it creates four users (one per role), two plants, five areas, six equipment items and ten permits across all permit statuses, with approvals where applicable. Demo passwords are hashed with bcrypt. Running the seed again updates existing demo records instead of creating duplicates. Deployed environments should run `npm run prisma:migrate:deploy -w server` once from a trusted local checkout configured with the deployed database; only seed a deployment when demo data is intentionally wanted.
 
 **Demo-only credentials** (development and assignment presentation only, never use in production):
 
@@ -195,7 +195,7 @@ Activation requires a time at or after `plannedStartAt` and sets `validUntil` fr
 ## Technical decisions
 
 - PostgreSQL and Prisma were chosen for relational integrity, typed queries, enums and versioned SQL migrations. One shared `Permit` table avoids four duplicate lifecycles; type-specific fields live in `typeData` JSONB and are validated by Zod.
-- Prisma Client uses the pooled `DATABASE_URL`; Prisma CLI migrations use the non-pooled `DIRECT_URL`. Migration advisory locks require a stable database session, so using the pooler for migrations can cause intermittent P1002 timeouts.
+- Prisma Client uses the pooled `DATABASE_URL`; Prisma CLI migrations use the non-pooled `DIRECT_URL`. Migration advisory locks require a stable database session, so migrations run as a one-off step instead of on every API restart.
 - Authorization is centralized in a role-to-permission map and server-side middleware. Area Owners are restricted to their assigned area; Safety Officers act across areas; administrators follow the existing permission and approval rules.
 - Lifecycle writes run in transactions with a status-and-version guard to prevent concurrent transitions from silently overwriting each other. Audit entries are append-only at the database level.
 - The JWT is stored in `localStorage` for a simple stateless demo. This is XSS-sensitive; HttpOnly cookies, CSRF protection and refresh-token rotation are future production work.
@@ -216,7 +216,7 @@ Server tests need `DATABASE_URL` pointing to a disposable PostgreSQL database wi
 
 The repository includes `vercel.json` and `render.yaml` for Vercel and Render, with Neon PostgreSQL as the production database. See `docs/deployment.md` for platform setup steps and the complete list of required environment variables. Production secrets are entered only in the platform dashboards; `.env` files are gitignored and no secret values are stored in the repository.
 
-The Render service binds to the platform-provided `PORT` on `0.0.0.0`, allows origins listed in `CORS_ORIGIN`, and runs `prisma migrate deploy` before startup. Seeding is manual and only appropriate when demo data is wanted.
+The Render service binds to the platform-provided `PORT` on `0.0.0.0` and allows origins listed in `CORS_ORIGIN`. Prisma migrations are run once from a trusted local checkout using `DIRECT_URL`, not on every API restart. Seeding is manual and only appropriate when demo data is wanted.
 
 ## Health check
 

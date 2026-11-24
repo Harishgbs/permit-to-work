@@ -62,7 +62,7 @@ A PostgreSQL sequence generates monotonic numbers formatted as `PTW-<year>-<six 
 
 The React client uses a single typed API module built on `fetch`. It sends the JWT as a bearer token, normalizes `{ error }` responses into `ApiError`, and clears the session on HTTP 401. A Vite dev proxy maps `/api` to `http://localhost:5001`, avoiding CORS in local development; `VITE_API_BASE_URL` can override the API origin for other environments.
 
-The app uses the pooled PostgreSQL URL for Prisma Client and a non-pooled `DIRECT_URL` for Prisma CLI migrations. Prisma Migrate takes a session-level advisory lock, so running migrations through a transaction pooler can intermittently fail with P1002 before the API starts.
+The app uses the pooled PostgreSQL URL for Prisma Client and a non-pooled `DIRECT_URL` for Prisma CLI migrations. Prisma Migrate takes a session-level advisory lock, so migrations run as a one-off local step instead of on every API restart; this prevents a stale or competing lock from blocking normal deploys with P1002.
 
 `localStorage` is used for the demo token because it is simple and works with the current stateless API. The trade-off is XSS exposure, so a production deployment should move to HttpOnly cookies with CSRF protection and refresh-token rotation.
 
